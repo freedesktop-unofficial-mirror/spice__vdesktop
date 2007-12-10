@@ -86,9 +86,9 @@ static struct {
 };
 
 struct alsa_params_req {
-    unsigned int freq;
+    int freq;
     audfmt_e fmt;
-    unsigned int nchannels;
+    int nchannels;
     unsigned int buffer_size;
     unsigned int period_size;
 };
@@ -285,8 +285,7 @@ static int alsa_open (int in, struct alsa_params_req *req,
 {
     snd_pcm_t *handle;
     snd_pcm_hw_params_t *hw_params;
-    int err;
-    unsigned int freq, nchannels;
+    int err, freq, nchannels;
     const char *pcm_name = in ? conf.pcm_name_in : conf.pcm_name_out;
     unsigned int period_size, buffer_size;
     snd_pcm_uframes_t obt_buffer_size;

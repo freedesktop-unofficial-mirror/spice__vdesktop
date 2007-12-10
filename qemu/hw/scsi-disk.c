@@ -37,7 +37,7 @@ do { fprintf(stderr, "scsi-disk: " fmt , ##args); } while (0)
 #define SCSI_DMA_BUF_SIZE    65536
 
 typedef struct SCSIRequest {
-    SCSIDeviceState *dev;
+    SCSIDevice *dev;
     uint32_t tag;
     /* ??? We should probably keep track of whether the data trasfer is
        a read or a write.  Currently we rely on the host getting it right.  */
@@ -51,7 +51,7 @@ typedef struct SCSIRequest {
     struct SCSIRequest *next;
 } SCSIRequest;
 
-struct SCSIDeviceState
+struct SCSIDevice
 {
     BlockDriverState *bdrv;
     SCSIRequest *requests;
@@ -69,7 +69,7 @@ struct SCSIDeviceState
 /* Global pool of SCSIRequest structures.  */
 static SCSIRequest *free_requests = NULL;
 
-static SCSIRequest *scsi_new_request(SCSIDeviceState *s, uint32_t tag)
+static SCSIRequest *scsi_new_request(SCSIDevice *s, uint32_t tag)
 {
     SCSIRequest *r;
 
@@ -93,7 +93,7 @@ static SCSIRequest *scsi_new_request(SCSIDeviceState *s, uint32_t tag)
 static void scsi_remove_request(SCSIRequest *r)
 {
     SCSIRequest *last;
-    SCSIDeviceState *s = r->dev;
+    SCSIDevice *s = r->dev;
 
     if (s->requests == r) {
         s->requests = r->next;
@@ -111,7 +111,7 @@ static void scsi_remove_request(SCSIRequest *r)
     free_requests = r;
 }
 
-static SCSIRequest *scsi_find_request(SCSIDeviceState *s, uint32_t tag)
+static SCSIRequest *scsi_find_request(SCSIDevice *s, uint32_t tag)
 {
     SCSIRequest *r;
 
@@ -125,7 +125,7 @@ static SCSIRequest *scsi_find_request(SCSIDeviceState *s, uint32_t tag)
 /* Helper function for command completion.  */
 static void scsi_command_complete(SCSIRequest *r, int sense)
 {
-    SCSIDeviceState *s = r->dev;
+    SCSIDevice *s = r->dev;
     uint32_t tag;
     DPRINTF("Command complete tag=0x%x sense=%d\n", r->tag, sense);
     s->sense = sense;
@@ -135,9 +135,8 @@ static void scsi_command_complete(SCSIRequest *r, int sense)
 }
 
 /* Cancel a pending data transfer.  */
-static void scsi_cancel_io(SCSIDevice *d, uint32_t tag)
+void scsi_cancel_io(SCSIDevice *s, uint32_t tag)
 {
-    SCSIDeviceState *s = d->state;
     SCSIRequest *r;
     DPRINTF("Cancel tag=0x%x\n", tag);
     r = scsi_find_request(s, tag);
@@ -152,7 +151,7 @@ static void scsi_cancel_io(SCSIDevice *d, uint32_t tag)
 static void scsi_read_complete(void * opaque, int ret)
 {
     SCSIRequest *r = (SCSIRequest *)opaque;
-    SCSIDeviceState *s = r->dev;
+    SCSIDevice *s = r->dev;
 
     if (ret) {
         DPRINTF("IO error\n");
@@ -165,9 +164,8 @@ static void scsi_read_complete(void * opaque, int ret)
 }
 
 /* Read more data from scsi device into buffer.  */
-static void scsi_read_data(SCSIDevice *d, uint32_t tag)
+void scsi_read_data(SCSIDevice *s, uint32_t tag)
 {
-    SCSIDeviceState *s = d->state;
     SCSIRequest *r;
     uint32_t n;
 
@@ -206,7 +204,7 @@ static void scsi_read_data(SCSIDevice *d, uint32_t tag)
 static void scsi_write_complete(void * opaque, int ret)
 {
     SCSIRequest *r = (SCSIRequest *)opaque;
-    SCSIDeviceState *s = r->dev;
+    SCSIDevice *s = r->dev;
     uint32_t len;
 
     if (ret) {
@@ -230,9 +228,8 @@ static void scsi_write_complete(void * opaque, int ret)
 
 /* Write data to a scsi device.  Returns nonzero on failure.
    The transfer may complete asynchronously.  */
-static int scsi_write_data(SCSIDevice *d, uint32_t tag)
+int scsi_write_data(SCSIDevice *s, uint32_t tag)
 {
-    SCSIDeviceState *s = d->state;
     SCSIRequest *r;
     uint32_t n;
 
@@ -262,9 +259,8 @@ static int scsi_write_data(SCSIDevice *d, uint32_t tag)
 }
 
 /* Return a pointer to the data buffer.  */
-static uint8_t *scsi_get_buf(SCSIDevice *d, uint32_t tag)
+uint8_t *scsi_get_buf(SCSIDevice *s, uint32_t tag)
 {
-    SCSIDeviceState *s = d->state;
     SCSIRequest *r;
 
     r = scsi_find_request(s, tag);
@@ -280,10 +276,8 @@ static uint8_t *scsi_get_buf(SCSIDevice *d, uint32_t tag)
    (eg. disk reads), negative for transfers to the device (eg. disk writes),
    and zero if the command does not transfer any data.  */
 
-static int32_t scsi_send_command(SCSIDevice *d, uint32_t tag,
-                                 uint8_t *buf, int lun)
+int32_t scsi_send_command(SCSIDevice *s, uint32_t tag, uint8_t *buf, int lun)
 {
-    SCSIDeviceState *s = d->state;
     int64_t nb_sectors;
     uint32_t lba;
     uint32_t len;
@@ -297,7 +291,7 @@ static int32_t scsi_send_command(SCSIDevice *d, uint32_t tag,
     r = scsi_find_request(s, tag);
     if (r) {
         BADF("Tag 0x%x already in use\n", tag);
-        scsi_cancel_io(d, tag);
+        scsi_cancel_io(s, tag);
     }
     /* ??? Tags are not unique for different luns.  We only implement a
        single lun, so this should not matter.  */
@@ -582,19 +576,19 @@ static int32_t scsi_send_command(SCSIDevice *d, uint32_t tag,
     }
 }
 
-static void scsi_destroy(SCSIDevice *d)
+void scsi_disk_destroy(SCSIDevice *s)
 {
-    qemu_free(d->state);
-    qemu_free(d);
+    qemu_free(s);
 }
 
-SCSIDevice *scsi_disk_init(BlockDriverState *bdrv, int tcq,
-                           scsi_completionfn completion, void *opaque)
+SCSIDevice *scsi_disk_init(BlockDriverState *bdrv,
+                           int tcq,
+                           scsi_completionfn completion,
+                           void *opaque)
 {
-    SCSIDevice *d;
-    SCSIDeviceState *s;
+    SCSIDevice *s;
 
-    s = (SCSIDeviceState *)qemu_mallocz(sizeof(SCSIDeviceState));
+    s = (SCSIDevice *)qemu_mallocz(sizeof(SCSIDevice));
     s->bdrv = bdrv;
     s->tcq = tcq;
     s->completion = completion;
@@ -605,14 +599,6 @@ SCSIDevice *scsi_disk_init(BlockDriverState *bdrv, int tcq,
         s->cluster_size = 1;
     }
 
-    d = (SCSIDevice *)qemu_mallocz(sizeof(SCSIDevice));
-    d->state = s;
-    d->destroy = scsi_destroy;
-    d->send_command = scsi_send_command;
-    d->read_data = scsi_read_data;
-    d->write_data = scsi_write_data;
-    d->cancel_io = scsi_cancel_io;
-    d->get_buf = scsi_get_buf;
-
-    return d;
+    return s;
 }
+

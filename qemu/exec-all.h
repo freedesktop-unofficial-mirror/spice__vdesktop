@@ -64,9 +64,8 @@ extern int loglevel;
 int gen_intermediate_code(CPUState *env, struct TranslationBlock *tb);
 int gen_intermediate_code_pc(CPUState *env, struct TranslationBlock *tb);
 void dump_ops(const uint16_t *opc_buf, const uint32_t *opparam_buf);
-unsigned long code_gen_max_block_size(void);
 int cpu_gen_code(CPUState *env, struct TranslationBlock *tb,
-                 int *gen_code_size_ptr);
+                 int max_code_size, int *gen_code_size_ptr);
 int cpu_restore_state(struct TranslationBlock *tb,
                       CPUState *env, unsigned long searched_pc,
                       void *puc);
@@ -95,6 +94,7 @@ static inline int tlb_set_page(CPUState *env, target_ulong vaddr,
     return tlb_set_page_exec(env, vaddr, paddr, prot, mmu_idx, is_softmmu);
 }
 
+#define CODE_GEN_MAX_SIZE        65536
 #define CODE_GEN_ALIGN           16 /* must be >= of the size of a icache line */
 
 #define CODE_GEN_PHYS_HASH_BITS     15
