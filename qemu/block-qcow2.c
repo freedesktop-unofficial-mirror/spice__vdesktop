@@ -197,7 +197,7 @@ static int qcow_open(BlockDriverState *bs, const char *filename, int flags)
         flags |= BDRV_O_CACHE_WB;
         flags &= ~BDRV_O_CACHE_DEF;
     }
-    ret = bdrv_file_open(&s->hd, filename, flags);
+    ret = bdrv_file_open(&s->hd, filename, flags | BDRV_O_AUTOGROW);
     if (ret < 0)
         return ret;
     if (bdrv_pread(s->hd, 0, &header, sizeof(header)) != sizeof(header))
