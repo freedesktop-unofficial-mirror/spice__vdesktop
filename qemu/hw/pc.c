@@ -1006,6 +1006,19 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
             isa_cirrus_vga_init(ds, phys_ram_base + vga_ram_addr,
                                 vga_ram_addr, vga_ram_size);
         }
+#ifdef CONFIG_QXL
+    } else if (using_qxl) {
+        if (!pci_enabled) {
+            fprintf(stderr, "%s: can't use qxl without pci\n", __FUNCTION__);
+            exit(-1);
+        }
+        isa_vga_init(ds, phys_ram_base + vga_ram_addr,
+                         vga_ram_addr, vga_ram_size);
+        for (i = 0; i < num_qxl_device; i++) {
+            ram_addr_t qxl_ram = qemu_ram_alloc(QXL_MEM_SIZE);
+            qxl_init(pci_bus, phys_ram_base + qxl_ram, qxl_ram, QXL_MEM_SIZE);
+        }
+#endif
     } else if (vmsvga_enabled) {
         if (pci_enabled)
             pci_vmsvga_init(pci_bus, ds, phys_ram_base + vga_ram_addr,

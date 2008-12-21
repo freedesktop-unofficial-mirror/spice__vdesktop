@@ -153,6 +153,11 @@
 
 #include "qemu-kvm.h"
 
+#ifdef CONFIG_SPICE
+#include "spice.h"
+#include "interface.h" 
+#endif
+
 //#define DEBUG_UNUSED_IOPORT
 //#define DEBUG_IOPORT
 //#define DEBUG_NET
@@ -262,6 +267,16 @@ static int icount_time_shift;
 static int64_t qemu_icount_bias;
 static QEMUTimer *icount_rt_timer;
 static QEMUTimer *icount_vm_timer;
+
+#ifdef CONFIG_QXL
+int using_qxl = 0;
+int num_qxl_device = 0;
+#endif
+
+#ifdef CONFIG_SPICE
+int using_spice = 0;
+const char *spice_args = NULL;
+#endif
 
 uint8_t qemu_uuid[16];
 
@@ -4007,6 +4022,13 @@ static void help(int exitcode)
 #endif
            "-name string    set the name of the guest\n"
            "-uuid %%08x-%%04x-%%04x-%%04x-%%012x specify machine UUID\n"
+#ifdef CONFIG_QXL
+           "-qxl <num>      use qxl display device\n"
+#endif
+#ifdef CONFIG_SPICE
+           "-spice <args>   use spice\n"
+           "-spice-help     show spice usage\n"
+#endif
            "\n"
            "Network options:\n"
            "-net nic[,vlan=n][,macaddr=addr][,model=type][,name=str]\n"
@@ -4246,6 +4268,13 @@ enum {
     QEMU_OPTION_tdf,
     QEMU_OPTION_kvm_shadow_memory,
     QEMU_OPTION_mempath,
+#ifdef CONFIG_QXL
+    QEMU_OPTION_qxl,
+#endif
+#ifdef CONFIG_SPICE
+    QEMU_OPTION_spice,
+    QEMU_OPTION_spice_help,
+#endif
 };
 
 typedef struct QEMUOption {
@@ -4381,6 +4410,13 @@ static const QEMUOption qemu_options[] = {
     { "icount", HAS_ARG, QEMU_OPTION_icount },
     { "incoming", HAS_ARG, QEMU_OPTION_incoming },
     { "mem-path", HAS_ARG, QEMU_OPTION_mempath },
+#ifdef CONFIG_QXL
+    { "qxl", HAS_ARG, QEMU_OPTION_qxl },
+#endif
+#ifdef CONFIG_SPICE
+    { "spice", HAS_ARG, QEMU_OPTION_spice },
+    { "spice-help", 0, QEMU_OPTION_spice_help },
+#endif
     { NULL },
 };
 
@@ -4635,7 +4671,6 @@ void qemu_get_launch_info(int *argc, char ***argv, int *opt_daemonize, const cha
     *opt_incoming = incoming;
 }
 
-
 static int gethugepagesize(void)
 {
     int ret, fd;
@@ -4815,7 +4850,7 @@ int main(int argc, char **argv, char **envp)
         }
     }
 #endif
-
+    init_monitor_commands();
     register_machines();
     machine = first_machine;
     cpu_model = NULL;
@@ -5316,6 +5351,37 @@ int main(int argc, char **argv, char **envp)
                 break;
 #endif
 #endif
+#ifdef CONFIG_QXL
+            case QEMU_OPTION_qxl: {
+                int devices = strtol(optarg, NULL, 0);
+                if (devices < 0 || devices > QXL_MAX_MONITORS ) {
+                    fprintf(stderr, "qemu: invalid number of qxl devices, use 0 to %d\n",
+                            QXL_MAX_MONITORS);
+                    exit(-1);
+                }
+                num_qxl_device = devices;
+                using_qxl = (num_qxl_device > 0) ? 1 : 0;
+                break;
+            }
+#endif
+#ifdef CONFIG_SPICE
+            case QEMU_OPTION_spice:
+                using_spice = 1;
+                if (!spice_parse_args(optarg)) {
+                    fprintf(stderr, "qemu: spice parse args failed\n");
+                    exit(1);
+                }
+                break;
+            case QEMU_OPTION_spice_help: {
+                const char **spice_line = spice_usage_str;
+                printf("\nSpice options\n");
+                for (; *spice_line; spice_line++) {
+                    printf("    %s\n", *spice_line);
+                }
+                exit(0);
+                break;
+            }
+#endif
             case QEMU_OPTION_usb:
                 usb_enabled = 1;
                 break;
@@ -5464,6 +5530,13 @@ int main(int argc, char **argv, char **envp)
             }
         }
     }
+
+#ifdef CONFIG_QXL
+    if(using_qxl) {
+        cirrus_vga_enabled = 0;
+        vmsvga_enabled = 0;
+    }
+#endif
 
 #if defined(CONFIG_KVM) && defined(USE_KQEMU)
     if (kvm_allowed && kqemu_allowed) {
@@ -5672,6 +5745,12 @@ int main(int argc, char **argv, char **envp)
         phys_ram_size += ram_size;
     }
 
+#ifdef CONFIG_QXL
+    if (using_qxl) {
+        phys_ram_size += num_qxl_device * QXL_MEM_SIZE;
+    }
+#endif
+
     /* Initialize kvm */
 #if defined(TARGET_I386) || defined(TARGET_X86_64)
 #define KVM_EXTRA_PAGES 3
@@ -5732,6 +5811,10 @@ int main(int argc, char **argv, char **envp)
         }
         /* nearly nothing to do */
         dumb_display_init(ds);
+#ifdef CONFIG_QXL
+    } else if (using_qxl) {
+        qxl_init_display(ds); 
+#endif
     } else if (vnc_display != NULL) {
         vnc_display_init(ds);
         if (vnc_display_open(ds, vnc_display) < 0)
@@ -5812,8 +5895,14 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
+#ifdef CONFIG_SPICE
+    if(using_spice) {
+        spice_init(&core_interface);
+    }
+#endif
+
     if (kvm_enabled())
-	kvm_init_ap();
+        kvm_init_ap();
 
 #ifdef KVM_UPSTREAM
     if (kvm_enabled()) {
@@ -5853,7 +5942,11 @@ int main(int argc, char **argv, char **envp)
         }
     }
 
+#ifdef CONFIG_QXL
+    if(!using_qxl && display_state.dpy_refresh) {
+#else
     if (display_state.dpy_refresh) {
+#endif
         display_state.gui_timer = qemu_new_timer(rt_clock, gui_update, &display_state);
         qemu_mod_timer(display_state.gui_timer, qemu_get_clock(rt_clock));
     }

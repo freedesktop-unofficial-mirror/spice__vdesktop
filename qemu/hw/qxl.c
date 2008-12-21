@@ -2,35 +2,31 @@
 #include <signal.h>
 
 #include "qemu-common.h"
-#include "hw.h"
-#include "pc.h"
-#include "pci.h"
+#include "hw/hw.h"
+#include "hw/pc.h"
+#include "hw/pci.h"
 #include "console.h"
-#include "vga_int.h"
+#include "hw/vga_int.h"
 #include "qemu-timer.h"
 #include "sysemu.h"
 
 #include "qxl_dev.h"
+
+#ifdef CONFIG_SPICE    
+#include "interface.h"
+#endif
 #include "qxl_interface.h"
-
-#include "qemu-kvm.h"
-
-#define KVM_MEM_ALIAS_QXL_RAM 0
-#define KVM_MEM_ALIAS_QXL_VRAM 1
-#define KVM_MEM_ALIAS_QXL_ROM 2
-
 
 //#define QXL_IO_MEM
 
 #define QXL_RAM_SIZE (32 * 1024 * 1024)
-#define QXL_DEFAULT_COMPRESSION_LEVEL 2
+#define QXL_DEFAULT_COMPRESSION_LEVEL 0
 #define QXL_SHARED_VGA_MODE FALSE
 #define QXL_SAVE_VERSION 3
 
-
-#define ASSERT(x) if (!(x)) { 					\
+#define ASSERT(x) if (!(x)) {                               \
 	printf("%s: ASSERT %s failed\n", __FUNCTION__, #x); 	\
-	exit(-1);						\
+	exit(-1);                                               \
 }
 
 #undef ALIGN
@@ -99,7 +95,6 @@ typedef struct QXLState {
 #endif
     int num_free_res;
     QXLReleaseInfo *last_release;
-    QXLWorkerRef worker;
     void *worker_data;
     int worker_data_size;
     int mode;
@@ -108,7 +103,20 @@ typedef struct QXLState {
     int running;
 } QXLState;
 
-typedef struct PCIQXLDevice {
+typedef struct PCIQXLDevice PCIQXLDevice;
+
+#ifdef CONFIG_SPICE
+typedef struct QXLModeNotifier QXLModeNotifier;
+struct QXLModeNotifier {
+    void *opaque;
+    qxl_mode_change_notifier_t proc;
+    PCIQXLDevice *d;
+    int refs;
+    QXLModeNotifier *next;
+};
+#endif
+
+struct PCIQXLDevice {
     PCIDevice pci_dev;
     QXLState state;
     int id;
@@ -116,11 +124,14 @@ typedef struct PCIQXLDevice {
     struct PCIQXLDevice *dev_next;
     struct PCIQXLDevice *vga_next;
     int pipe_fd[2];
-} PCIQXLDevice;
+    QXLWorker* worker;
+#ifdef CONFIG_SPICE
+    QXLModeNotifier *mode_notifiers;
+#endif
+};
 
 static PCIQXLDevice *dev_list = NULL;
 static pthread_t main_thread;
-static int compression_level = QXL_DEFAULT_COMPRESSION_LEVEL;
 
 #define PIXEL_SIZE 0.2936875 //1280x1024 is 14.8" x 11.9" 
 
@@ -180,8 +191,6 @@ static void qxl_reset_state(PCIQXLDevice *d);
 
 static QXLVga qxl_vga;
 
-static QXLModeChangeNotifier qxl_mode_change_notifier = NULL;
-
 inline void atomic_or(uint32_t *var, uint32_t add)
 {
    __asm__ __volatile__ ("lock; orl %1, %0" : "+m" (*var) : "r" (add) : "memory");
@@ -239,18 +248,7 @@ void qxl_update_irq()
     }
 }
 
-void qxl_set_compression_level(int new_compression_level)
-{
-    PCIQXLDevice *d = dev_list;
-
-    compression_level = new_compression_level;
-    while (d) {
-        d->state.rom->compression_level = compression_level;
-        d = d->dev_next;
-    }
-}
-
-void do_set_qxl_log_level(int log_level)
+void qxl_do_set_log_level(int log_level)
 {
     PCIQXLDevice *d = dev_list;
     while (d) {
@@ -272,7 +270,9 @@ static void qxl_send_events(PCIQXLDevice *d, uint32_t events)
     } else {
         //dummy write in order to wake up the main thread
         //to update the irq line
-        write(d->pipe_fd[1], d, 1);
+        if (write(d->pipe_fd[1], d, 1) != 1) {
+            printf("%s: write to pipe failed\n", __FUNCTION__);
+        }
     }
 }
 
@@ -287,9 +287,8 @@ static void set_dreaw_area(PCIQXLDevice *d, QXLDevInfo *info)
     info->draw_area.heigth = info->y_res;
 }
 
-void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info)
+static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLState *state = &d->state;
     QXLMode *mode;
 
@@ -297,6 +296,7 @@ void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info)
         info->x_res = qxl_vga.ds->width;
         info->y_res = qxl_vga.ds->height;
         info->bits = qxl_vga.ds->depth;
+        info->use_hardware_cursor = FALSE;
 
         info->phys_start = 0;
         info->phys_end = ~info->phys_start;
@@ -310,6 +310,7 @@ void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info)
     info->x_res = mode->x_res;
     info->y_res = mode->y_res;
     info->bits = mode->bits;
+    info->use_hardware_cursor = TRUE;
 
     info->phys_start = (unsigned long)state->ram_start + state->rom->pages_offset;
     info->phys_end = (unsigned long)state->ram_start + state->ram_size;
@@ -322,9 +323,8 @@ static QXLCommandRing *qxl_active_ring(PCIQXLDevice *d)
     return (d->state.mode == QXL_MODE_VGA) ? &d->state.vga_ring : &d->state.ram->cmd_ring;
 }
 
-int qxl_get_command(QXLDevRef dev_ref, QXLCommand *cmd)
+static int _qxl_get_command(PCIQXLDevice *d, QXLCommand *cmd)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLCommandRing *ring = qxl_active_ring(d);
     int notify;
 
@@ -339,16 +339,14 @@ int qxl_get_command(QXLDevRef dev_ref, QXLCommand *cmd)
     return TRUE;
 }
 
-int qxl_has_command(QXLDevRef dev_ref)
+static int _qxl_has_command(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLCommandRing *ring = qxl_active_ring(d);
     return !RING_IS_EMPTY(ring);
 }
 
-int qxl_get_cursor_command(QXLDevRef dev_ref, QXLCommand *cmd)
+static int _qxl_get_cursor_command(PCIQXLDevice *d, QXLCommand *cmd)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLCursorRing *ring;
     int notify;
 
@@ -369,24 +367,20 @@ int qxl_get_cursor_command(QXLDevRef dev_ref, QXLCommand *cmd)
     return 1;
 }
 
-const Rect *qxl_get_update_area(QXLDevRef dev_ref)
+static const Rect *_qxl_get_update_area(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     return &d->state.ram->update_area;
 }
 
-int qxl_req_cmd_notification(QXLDevRef dev_ref)
+static int _qxl_req_cmd_notification(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     int wait;
-
     RING_CONS_WAIT(qxl_active_ring(d), wait);
     return wait;
 }
 
-int qxl_req_cursor_notification(QXLDevRef dev_ref)
+static int _qxl_req_cursor_notification(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     int wait;
 
     if (d->state.mode == QXL_MODE_VGA) {
@@ -419,9 +413,8 @@ static inline void qxl_push_free_res(PCIQXLDevice *d)
     }
 }
 
-void qxl_release_resource(QXLDevRef dev_ref, QXLReleaseInfo *release_info)
+static void _qxl_release_resource(PCIQXLDevice *d, QXLReleaseInfo *release_info)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     UINT64 id = release_info->id;
     QXLState *state = &d->state;
     QXLReleaseRing *ring;
@@ -448,9 +441,8 @@ void qxl_release_resource(QXLDevRef dev_ref, QXLReleaseInfo *release_info)
     qxl_push_free_res(d);
 }
 
-void qxl_set_save_data(QXLDevRef dev_ref, void *data, int size)
+static void _qxl_set_save_data(PCIQXLDevice *d, void *data, int size)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLState *state = &d->state;
 
     free(state->worker_data);
@@ -458,20 +450,15 @@ void qxl_set_save_data(QXLDevRef dev_ref, void *data, int size)
     state->worker_data_size = size;
 }
 
-void *qxl_get_save_data(QXLDevRef dev_ref)
+static void *_qxl_get_save_data(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     QXLState *state = &d->state;
-
     return state->worker_data;
-
 }
 
-int qxl_flush_resources(QXLDevRef dev_ref)
+static int _qxl_flush_resources(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
     int ret;
-
     if (d->state.mode == QXL_MODE_VGA) {
         return 0;
     }
@@ -482,10 +469,8 @@ int qxl_flush_resources(QXLDevRef dev_ref)
     return ret;
 }
 
-void qxl_notify_update(QXLDevRef dev_ref, uint32_t update_id)
+static void _qxl_notify_update(PCIQXLDevice *d, uint32_t update_id)
 {
-    PCIQXLDevice *d = (PCIQXLDevice *)dev_ref;
-
     if (d->state.mode == QXL_MODE_VGA) {
         return;
     }
@@ -501,7 +486,7 @@ static void qxl_detach(PCIQXLDevice *d)
         return;
     }
 
-    qxl_worker_detach(d->state.worker);
+    d->worker->detach(d->worker);
     if (d->state.mode != QXL_MODE_VGA) {
         RING_INIT(&d->state.ram->cmd_ring);
         RING_INIT(&d->state.ram->cursor_ring);
@@ -523,44 +508,42 @@ static void qxl_detach(PCIQXLDevice *d)
     }
 }
 
-static void qxl_notify_mode_change()
-{
-    PCIQXLDevice *d = dev_list;
-    int qxl_mode_native_counter = 0;
-    int mode = 0;
+#ifdef CONFIG_SPICE
 
-    if (!qxl_mode_change_notifier){
-        return;
-    }
-    if (qxl_vga.active_clients > 0) {
-        qxl_mode_change_notifier(FALSE, 0, 0);
-        return;
-    }
-    while (d && qxl_mode_native_counter < 2) {
-        if (d->state.mode == QXL_MODE_NATIVE && ++qxl_mode_native_counter == 1) {
-            mode = d->state.rom->mode;
-        }
-        d = d->dev_next;
-    }
-    if (qxl_mode_native_counter == 1) {
-        qxl_mode_change_notifier(TRUE, qxl_modes[mode].x_res, qxl_modes[mode].y_res);
-    } else {
-        qxl_mode_change_notifier(FALSE, 0, 0);
-    }
+static void hold_mode_notifier(QXLModeNotifier* notifier)
+{
+    notifier->refs++;
 }
 
-void qxl_register_mode_change(QXLModeChangeNotifier notifier){
-    qxl_mode_change_notifier = notifier;
-    qxl_notify_mode_change();
+static void release_mode_notifier(QXLModeNotifier* notifier)
+{
+    if (--notifier->refs) {
+        return;
+    }
+    QXLModeNotifier **now = &notifier->d->mode_notifiers;
+    while (*now != notifier) {
+        now = &(*now)->next;
+    }
+    *now = notifier->next;
+    free(notifier);
 }
 
-void qxl_set_mm_time(uint32_t stamp)
+#endif
+
+static void qxl_notify_mode_change(PCIQXLDevice *d)
 {
-    PCIQXLDevice *d = dev_list;
-    while (d) {
-        d->state.rom->mm_clock = stamp;
-        d = d->dev_next;
+#ifdef CONFIG_SPICE
+    QXLModeNotifier *now = d->mode_notifiers;
+    QXLModeNotifier *tmp;
+
+    while (now) {
+        hold_mode_notifier(now);
+        now->proc(now->opaque);
+        tmp = now;
+        now = now->next;
+        release_mode_notifier(tmp);
     }
+#endif
 }
 
 static void qxl_set_mode(PCIQXLDevice *d, uint32_t mode)
@@ -579,15 +562,8 @@ static void qxl_set_mode(PCIQXLDevice *d, uint32_t mode)
     d->state.rom->mode = mode;
     memset(d->state.vram, 0, d->state.vram_size);
     d->state.mode = QXL_MODE_NATIVE;
-    qxl_notify_mode_change();
-    qxl_worker_attach(d->state.worker);
-}
-
-void *vga_context = NULL;
-
-void qxl_set_vga_context(void *context)
-{
-    vga_context = context;
+    qxl_notify_mode_change(d);
+    d->worker->attach(d->worker);
 }
 
 static void qxl_add_vga_client()
@@ -610,9 +586,8 @@ static void qxl_enter_vga_mode(PCIQXLDevice *d)
     printf("%u: %s\n", d->id, __FUNCTION__);
     d->state.rom->mode = ~0;
     d->state.mode = QXL_MODE_VGA;
-    qxl_notify_mode_change();
+    qxl_notify_mode_change(d);
     qxl_add_vga_client();
-    vga_on_qxl_enter_vga(vga_context);
 }
 
 /* reset the state (assuming the worker is detached) */
@@ -645,10 +620,10 @@ static void qxl_reset(PCIQXLDevice *d)
     qxl_reset_state(d);
     if (QXL_SHARED_VGA_MODE || !d->id) {
         qxl_enter_vga_mode(d);
-        qxl_worker_attach(d->state.worker);
+        d->worker->attach(d->worker);
     } else {
         d->state.mode = QXL_MODE_UNDEFINED;
-        qxl_notify_mode_change();
+        qxl_notify_mode_change(d);
     }
 }
 
@@ -665,13 +640,13 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
     }
     switch (io_port) {
     case QXL_IO_UPDATE_AREA:
-        qxl_worker_update_area(d->state.worker);
+        d->worker->update_area(d->worker);
         break;
     case QXL_IO_NOTIFY_CMD:
-        qxl_worker_wakeup(d->state.worker);
+        d->worker->wakeup(d->worker);
         break;
     case QXL_IO_NOTIFY_CURSOR:
-        qxl_worker_wakeup(d->state.worker);
+        d->worker->wakeup(d->worker);
         break;
     case QXL_IO_UPDATE_IRQ:
         qemu_set_irq(d->pci_dev.irq[0], irq_level(d));
@@ -685,7 +660,7 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
         if (!RING_IS_EMPTY(&d->state.ram->release_ring)) {
             break;
         }
-        qxl_worker_oom(d->state.worker);
+        d->worker->oom(d->worker);
         break;
     case QXL_IO_LOG:
         printf("%u: %s", d->id, d->state.ram->log_buf);
@@ -732,13 +707,6 @@ static void rom_map(PCIDevice *d, int region_num,
     ASSERT(size ==  s->rom_size);
 
     cpu_register_physical_memory(addr, size, s->rom_offset | IO_MEM_ROM);
-    if (kvm_enabled() && kvm_create_memory_alias(kvm_context,
-                                               addr,
-                                               size,
-                                               s->rom_offset)) {
-        printf("%s: create memory alias failed\n", __FUNCTION__);
-        exit(-1);
-    }
 }
 
 static void ram_map(PCIDevice *d, int region_num,
@@ -754,13 +722,6 @@ static void ram_map(PCIDevice *d, int region_num,
     ASSERT((size & ~TARGET_PAGE_MASK) == 0);
     s->ram_phys_addr = addr;
     cpu_register_physical_memory(addr, size, s->ram_offset | IO_MEM_RAM);
-    if (kvm_enabled() && kvm_create_memory_alias(kvm_context,
-                                               addr,
-                                               size,
-                                               s->ram_offset)) {
-        printf("%s: create memory alias failed\n", __FUNCTION__);
-        exit(-1);
-    }
 }
 
 static void vram_map(PCIDevice *d, int region_num,
@@ -779,13 +740,6 @@ static void vram_map(PCIDevice *d, int region_num,
 #else
     cpu_register_physical_memory(addr, size, s->vram_offset | IO_MEM_RAM);
 #endif
-    if (kvm_enabled() && kvm_create_memory_alias(kvm_context,
-                                               addr,
-                                               size,
-                                               s->vram_offset)) {
-        printf("%s: create memory alias failed\n", __FUNCTION__);
-        exit(-1);
-    }
 }
 
 
@@ -852,7 +806,7 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
     rom->mode = 0;
     rom->modes_offset = sizeof(QXLRom);
     rom->draw_area_size =qxl_max_x_res() * sizeof(uint32_t) * qxl_max_y_res();
-    rom->compression_level = compression_level;
+    rom->compression_level = QXL_DEFAULT_COMPRESSION_LEVEL;
     rom->log_level = 0;
 
     *max_fb = 0;
@@ -968,7 +922,7 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             cmd->data = (PHYSICAL)drawable;
             RING_PUSH(ring, notify);
             if (notify) {
-                qxl_worker_wakeup(client->state.worker);
+                client->worker->wakeup(client->worker);
             }
         }
         client = client->vga_next;
@@ -1040,7 +994,6 @@ static void qxl_exit_vga_mode(PCIQXLDevice *d)
     printf("%s\n", __FUNCTION__);
     qxl_remove_vga_client();
     d->state.mode = QXL_MODE_UNDEFINED;
-    vga_on_qxl_exit_vga(vga_context);
 }
 
 int qxl_vga_touch(void)
@@ -1063,7 +1016,7 @@ static void qxl_save(QEMUFile* f, void* opaque)
     QXLState*     s=&d->state;
     uint32_t      last_release_offset;
 
-    qxl_worker_save(d->state.worker);
+    d->worker->save(d->worker);
     pci_device_save(&d->pci_dev, f);
 
     qemu_put_be32(f, s->rom->mode);
@@ -1105,7 +1058,7 @@ static int qxl_load(QEMUFile* f,void* opaque,int version_id)
     }
 
     if (d->state.mode != QXL_MODE_UNDEFINED) {
-        qxl_worker_detach(d->state.worker);
+        d->worker->detach(d->worker);
     }
 
     if (s->mode == QXL_MODE_VGA) {
@@ -1149,10 +1102,10 @@ static int qxl_load(QEMUFile* f,void* opaque,int version_id)
         qxl_add_vga_client();
     }
     if (s->mode != QXL_MODE_UNDEFINED) {
-        qxl_worker_attach(d->state.worker);
-        qxl_worker_load(d->state.worker);
+        d->worker->attach(d->worker);
+        d->worker->load(d->worker);
     }
-    qxl_notify_mode_change();
+    qxl_notify_mode_change(d);
     return 0;
 }
 
@@ -1183,14 +1136,14 @@ static void qxl_vm_change_state_handler(void *opaque, int running)
     if (running) {
         d->state.running = TRUE;
         qemu_set_fd_handler(d->pipe_fd[0], qxl_pipe_read, NULL, d);
-        qxl_worker_start(d->state.worker);
+        d->worker->start(d->worker);
         qemu_set_irq(d->pci_dev.irq[0], irq_level(d));
         if (qxl_vga.active_clients) {
             qemu_mod_timer(qxl_vga.timer, qemu_get_clock(rt_clock));
         }
     } else {
         qemu_del_timer(qxl_vga.timer);
-        qxl_worker_stop(d->state.worker);
+        d->worker->stop(d->worker);
         qemu_set_fd_handler(d->pipe_fd[0], NULL, NULL, d);
         d->state.running = FALSE;
     }
@@ -1215,7 +1168,259 @@ static void reset_handler(void *opaque)
     }
 }
 
-static int channel_id = 0;
+void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info)
+{
+    _qxl_get_info((PCIQXLDevice *)dev_ref, info);
+}
+
+int qxl_get_command(QXLDevRef dev_ref, struct QXLCommand *cmd)
+{
+    return _qxl_get_command((PCIQXLDevice *)dev_ref, cmd);
+}
+
+void qxl_release_resource(QXLDevRef dev_ref, union QXLReleaseInfo *release_info)
+{
+    _qxl_release_resource((PCIQXLDevice *)dev_ref, release_info);
+}
+
+void qxl_notify_update(QXLDevRef dev_ref, uint32_t update_id)
+{
+    _qxl_notify_update((PCIQXLDevice *)dev_ref, update_id);
+}
+
+int qxl_req_cmd_notification(QXLDevRef dev_ref)
+{
+    return _qxl_req_cmd_notification((PCIQXLDevice *)dev_ref);
+}
+
+int qxl_get_cursor_command(QXLDevRef dev_ref, struct QXLCommand *cmd)
+{
+    return _qxl_get_cursor_command((PCIQXLDevice *)dev_ref, cmd);
+}
+
+int qxl_req_cursor_notification(QXLDevRef dev_ref)
+{
+    return _qxl_req_cursor_notification((PCIQXLDevice *)dev_ref);
+}
+
+int qxl_has_command(QXLDevRef dev_ref)
+{
+    return _qxl_has_command((PCIQXLDevice *)dev_ref);
+}
+
+const Rect *qxl_get_update_area(QXLDevRef dev_ref)
+{
+    return _qxl_get_update_area((PCIQXLDevice *)dev_ref);
+}
+
+int qxl_flush_resources(QXLDevRef dev_ref)
+{
+    return _qxl_flush_resources((PCIQXLDevice *)dev_ref);
+}
+
+void qxl_set_save_data(QXLDevRef dev_ref, void *data, int size)
+{
+    _qxl_set_save_data((PCIQXLDevice *)dev_ref, data, size);
+}
+
+void *qxl_get_save_data(QXLDevRef dev_ref)
+{
+    return _qxl_get_save_data((PCIQXLDevice *)dev_ref);
+}
+
+#ifdef CONFIG_SPICE
+
+typedef struct Interface {
+    QXLInterface vd_interface;
+    PCIQXLDevice *d;
+} Interface;
+
+static void interface_attache_worker(QXLInterface *qxl, QXLWorker *qxl_worker)
+{
+    Interface *interface = (Interface *)qxl;
+    if (interface->d->worker) {
+        printf("%s: has worker\n", __FUNCTION__);
+        exit(-1);
+    }
+    interface->d->worker = qxl_worker;
+}
+
+void interface_set_compression_level(QXLInterface *qxl, int level)
+{
+    PCIQXLDevice *d = ((Interface *)qxl)->d;
+    d->state.rom->compression_level = level;
+}
+
+void interface_set_mm_time(QXLInterface *qxl, uint32_t mm_time)
+{
+    PCIQXLDevice *d = ((Interface *)qxl)->d;
+    d->state.rom->mm_clock = mm_time;
+}
+
+static QXLModeNotifier *register_mode_notifier(PCIQXLDevice *d, qxl_mode_change_notifier_t proc,
+                                               void *opaque)
+{
+    QXLModeNotifier *notifier;
+
+    if (!proc) {
+        return NULL;
+    }
+
+    if (!(notifier = (QXLModeNotifier *)malloc(sizeof(*notifier)))) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    notifier->opaque = opaque;
+    notifier->proc = proc;
+    notifier->refs = 1;
+    notifier->next = d->mode_notifiers;
+    d->mode_notifiers = notifier;
+    return notifier;
+}
+
+static void unregister_mode_notifier(PCIQXLDevice *d, QXLModeNotifier *notifier)
+{
+    QXLModeNotifier **now = &d->mode_notifiers;
+    for (;;) {
+        if (*now == notifier) {
+            notifier->proc = NULL;
+            release_mode_notifier(notifier);
+            return;
+        }
+        now = &(*now)->next;
+    }
+}
+
+static VDObjectRef interface_register_mode_change(QXLInterface *qxl, qxl_mode_change_notifier_t notifier, void *opaque)
+{
+    PCIQXLDevice *d = ((Interface *)qxl)->d;
+
+    if (!notifier) {
+        return 0;
+    }
+    return (VDObjectRef)register_mode_notifier(d, notifier, opaque);
+}
+
+static void interface_unregister_mode_change(QXLInterface *qxl, VDObjectRef notifier)
+{
+    PCIQXLDevice *d = ((Interface *)qxl)->d;
+    if (!notifier) {
+        return;
+    }
+    unregister_mode_notifier(d, (QXLModeNotifier *)notifier);
+}
+
+static void interface_get_info(QXLInterface *qxl, QXLDevInfo *info)
+{
+    _qxl_get_info(((Interface *)qxl)->d, info);
+}
+
+static int interface_get_command(QXLInterface *qxl, struct QXLCommand *cmd)
+{
+    return _qxl_get_command(((Interface *)qxl)->d, cmd);
+}
+
+static int interface_req_cmd_notification(QXLInterface *qxl)
+{
+    return _qxl_req_cmd_notification(((Interface *)qxl)->d);
+}
+
+static int interface_has_command(QXLInterface *qxl)
+{
+    return _qxl_has_command(((Interface *)qxl)->d);
+}
+
+static void interface_release_resource(QXLInterface *qxl, union QXLReleaseInfo *release_info)
+{
+    _qxl_release_resource(((Interface *)qxl)->d, release_info);
+}
+
+static int interface_get_cursor_command(QXLInterface *qxl, struct QXLCommand *cmd)
+{
+    return _qxl_get_cursor_command(((Interface *)qxl)->d, cmd);
+}
+
+static int interface_req_cursor_notification(QXLInterface *qxl)
+{
+    return _qxl_req_cursor_notification(((Interface *)qxl)->d);
+}
+
+static const struct Rect *interface_get_update_area(QXLInterface *qxl)
+{
+    return _qxl_get_update_area(((Interface *)qxl)->d);
+}
+
+static void interface_notify_update(QXLInterface *qxl, uint32_t update_id)
+{
+    _qxl_notify_update(((Interface *)qxl)->d, update_id);
+}
+
+static void interface_set_save_data(QXLInterface *qxl, void *data, int size)
+{
+    _qxl_set_save_data(((Interface *)qxl)->d, data, size);
+}
+
+static void *interface_get_save_data(QXLInterface *qxl)
+{
+    return _qxl_get_save_data(((Interface *)qxl)->d);
+}
+
+static int interface_flush_resources(QXLInterface *qxl)
+{
+    return _qxl_flush_resources(((Interface *)qxl)->d);
+}
+
+static void regitser_interface(PCIQXLDevice *d)
+{
+    Interface *interface = (Interface *)qemu_mallocz(sizeof(*interface));
+
+    if (!interface) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.type = VD_INTERFACE_QXL;
+    interface->vd_interface.base.id = d->id;
+    interface->vd_interface.base.description = "QXL GPU";
+    interface->vd_interface.base.major_vertion = VD_INTERFACE_QXL_MAJOR;
+    interface->vd_interface.base.minor_vertion = VD_INTERFACE_QXL_MINOR;
+
+    interface->vd_interface.pci_vendor = QUMRANET_PCI_VENDOR_ID;
+    interface->vd_interface.pci_id = QXL_DEVICE_ID;
+    interface->vd_interface.pci_revision = QXL_REVISION;
+
+    interface->vd_interface.attache_worker = interface_attache_worker;
+    interface->vd_interface.set_compression_level = interface_set_compression_level;
+    interface->vd_interface.set_mm_time = interface_set_mm_time;
+    interface->vd_interface.register_mode_change = interface_register_mode_change;
+    interface->vd_interface.unregister_mode_change = interface_unregister_mode_change;
+
+    interface->vd_interface.get_info = interface_get_info;
+    interface->vd_interface.get_command = interface_get_command;
+    interface->vd_interface.req_cmd_notification = interface_req_cmd_notification;
+    interface->vd_interface.has_command = interface_has_command;
+    interface->vd_interface.release_resource = interface_release_resource;
+    interface->vd_interface.get_cursor_command = interface_get_cursor_command;
+    interface->vd_interface.req_cursor_notification = interface_req_cursor_notification;
+    interface->vd_interface.get_update_area = interface_get_update_area;
+    interface->vd_interface.notify_update = interface_notify_update;
+    interface->vd_interface.set_save_data = interface_set_save_data;
+    interface->vd_interface.get_save_data = interface_get_save_data;
+    interface->vd_interface.flush_resources = interface_flush_resources;
+
+    interface->d = d;
+    add_interface(&interface->vd_interface.base);
+}
+
+#endif
+
+static void creat_native_worker(PCIQXLDevice *d, int id)
+{
+    d->worker = qxl_interface_create_worker((QXLDevRef)d, id);
+    ASSERT(d->worker);
+}
+
+static int device_id = 0;
 
 void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset, 
               uint32_t vram_size)
@@ -1229,13 +1434,13 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
                                            sizeof(PCIQXLDevice), -1, NULL,
                                            NULL);
 
-    d->id = channel_id;
+    d->id = device_id;
     d->state.mode = QXL_MODE_UNDEFINED;
-    if (!channel_id) {
+    if (!device_id) {
         qxl_init_modes();
     }
 
-    register_savevm(QXL_DEV_NAME, channel_id, QXL_SAVE_VERSION, qxl_save, qxl_load, d);
+    register_savevm(QXL_DEV_NAME, device_id, QXL_SAVE_VERSION, qxl_save, qxl_load, d);
     qemu_add_vm_change_state_handler(qxl_vm_change_state_handler, d);
 
     pci_conf = (PCIConf *)d->pci_dev.config;
@@ -1309,19 +1514,26 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
 #else
     pci_register_io_region(&d->pci_dev, QXL_VRAM_RANGE_INDEX, d->state.vram_size,
                            PCI_ADDRESS_SPACE_MEM_PREFETCH, vram_map);
-#endif
-    d->state.worker = qxl_worker_init((QXLDevRef) d, channel_id++);
+#endif    
     d->dev_next = dev_list;
     dev_list = d;
     d->vga_next = qxl_vga.clients;
     qxl_vga.clients = d;
     main_thread = pthread_self();
     qxl_reset_state(d);
+    init_pipe_signaling(d);
+    
+#ifdef CONFIG_SPICE
+    regitser_interface(d);
+#endif
+    if (!d->worker) {
+        creat_native_worker(d, device_id);
+    }
     if (QXL_SHARED_VGA_MODE || !d->id) {
         qxl_enter_vga_mode(d);
-        qxl_worker_attach(d->state.worker);
+        d->worker->attach(d->worker);
     } 
-    init_pipe_signaling(d);
     qemu_register_reset(reset_handler, d);
+    device_id++;
 }
 

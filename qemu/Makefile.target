@@ -231,6 +231,11 @@ LIBOBJS+=qemu-kvm-helper.o
 endif
 endif
 
+ifeq ($(CONFIG_SPICE),yes)
+CFLAGS+=$(SPICE_CFLAGS)
+LIBS+=$(SPICE_LIBS)
+endif
+
 LIBOBJS+= op_helper.o
 
 ifneq ($(TARGET_ARCH), ia64)
@@ -710,6 +715,14 @@ OBJS+= extboot.o
 # virtio support
 OBJS+= virtio.o virtio-blk.o virtio-balloon.o
 OBJS += virtio-net.o
+
+ifeq ($(CONFIG_QXL),yes)
+OBJS+=qxl.o qxl_native_worker.o 
+endif
+ifeq ($(CONFIG_SPICE),yes)
+OBJS+=interface.o
+endif
+
 ifeq ($(USE_KVM_PIT), 1)
 OBJS+= i8254-kvm.o
 endif

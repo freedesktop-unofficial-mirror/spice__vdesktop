@@ -26,6 +26,10 @@
 #include "console.h"
 #include "usb.h"
 
+#ifdef CONFIG_SPICE
+#include "interface.h"
+#endif
+
 /* HID interface requests */
 #define GET_REPORT   0xa101
 #define GET_IDLE     0xa102
@@ -47,6 +51,11 @@ typedef struct USBMouseState {
     int dx, dy, dz, buttons_state;
     int x, y;
     int mouse_grabbed;
+#ifdef CONFIG_SPICE
+    TabletInterface interface;
+    int logical_width;
+    int logical_height;
+#endif
     QEMUPutMouseEntry *eh_entry;
 } USBMouseState;
 
@@ -510,9 +519,9 @@ static int usb_mouse_poll(USBHIDState *hs, uint8_t *buf, int len)
     USBMouseState *s = &hs->ptr;
 
     if (!s->mouse_grabbed) {
-	s->eh_entry = qemu_add_mouse_event_handler(usb_mouse_event, hs,
+        s->eh_entry = qemu_add_mouse_event_handler(usb_mouse_event, hs,
                                                   0, "QEMU USB Mouse");
-	s->mouse_grabbed = 1;
+        s->mouse_grabbed = 1;
     }
 
     dx = int_clamp(s->dx, -127, 127);
@@ -546,15 +555,77 @@ static int usb_mouse_poll(USBHIDState *hs, uint8_t *buf, int len)
     return l;
 }
 
+
+#ifdef CONFIG_SPICE
+
+static void interface_set_logical_size(TabletInterface* interface, int width, int height)
+{
+   USBHIDState *hs = container_of(interface, USBHIDState, ptr.interface);
+   hs->ptr.logical_width = width;
+   hs->ptr.logical_height = height;
+}
+
+static void interface_position(TabletInterface *interface, int x, int y,
+                               uint32_t buttons_state)
+{
+    USBHIDState *hs = container_of(interface, USBHIDState, ptr.interface);
+
+    x = (x + 1) * 0x7FFF / (hs->ptr.logical_width + 1 /*why + 1*/);
+    y = (y + 1) * 0x7FFF / (hs->ptr.logical_height + 1 /*why + 1*/);
+    usb_tablet_event(hs, x, y, 0, buttons_state);
+}
+
+
+static void interface_wheel(TabletInterface *interface, int wheel,
+                            uint32_t buttons_state)
+{
+    USBHIDState *hs = container_of(interface, USBHIDState, ptr.interface);
+    usb_tablet_event(hs, hs->ptr.x, hs->ptr.y, wheel, buttons_state);
+}
+
+static void interface_buttons(TabletInterface *interface,
+                              uint32_t buttons_state)
+{
+    USBHIDState *hs = container_of(interface, USBHIDState, ptr.interface);
+    usb_tablet_event(hs, hs->ptr.x, hs->ptr.y, 0, buttons_state);
+}
+
+static void regitser_tablet(USBMouseState *s)
+{
+    TabletInterface *interface = &s->interface;
+    static int tablet_interface_id = 0;
+    
+    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.type = VD_INTERFACE_TABLET;
+    interface->base.id = ++tablet_interface_id;
+    interface->base.description = "usb tablet";
+    interface->base.major_vertion = VD_INTERFACE_TABLET_MAJOR;
+    interface->base.minor_vertion = VD_INTERFACE_TABLET_MINOR;
+
+
+    interface->set_logical_size = interface_set_logical_size;
+    interface->position = interface_position;
+    interface->wheel = interface_wheel;
+    interface->buttons = interface_buttons;
+
+    add_interface(&interface->base);
+}
+
+
+#endif
+
 static int usb_tablet_poll(USBHIDState *hs, uint8_t *buf, int len)
 {
     int dz, b, l;
     USBMouseState *s = &hs->ptr;
 
     if (!s->mouse_grabbed) {
-	s->eh_entry = qemu_add_mouse_event_handler(usb_tablet_event, hs,
+        s->eh_entry = qemu_add_mouse_event_handler(usb_tablet_event, hs,
                                                   1, "QEMU USB Tablet");
-	s->mouse_grabbed = 1;
+        s->mouse_grabbed = 1;
+#ifdef CONFIG_SPICE
+        regitser_tablet(s);
+#endif 
     }
 
     dz = int_clamp(s->dz, -127, 127);
@@ -840,9 +911,22 @@ static void usb_hid_handle_destroy(USBDevice *dev)
 {
     USBHIDState *s = (USBHIDState *)dev;
 
-    if (s->kind != USB_KEYBOARD)
+    if (s->kind != USB_KEYBOARD && s->ptr.mouse_grabbed)
         qemu_remove_mouse_event_handler(s->ptr.eh_entry);
     /* TODO: else */
+    qemu_free(s);
+}
+
+
+static void usb_tablet_handle_destroy(USBDevice *dev)
+{
+    USBHIDState *s = (USBHIDState *)dev;
+    if (s->ptr.mouse_grabbed) {
+#ifdef CONFIG_SPICE
+        remove_interface(&s->ptr.interface.base);
+#endif
+        qemu_remove_mouse_event_handler(s->ptr.eh_entry);
+    }
     qemu_free(s);
 }
 
@@ -859,7 +943,7 @@ USBDevice *usb_tablet_init(void)
     s->dev.handle_reset = usb_mouse_handle_reset;
     s->dev.handle_control = usb_hid_handle_control;
     s->dev.handle_data = usb_hid_handle_data;
-    s->dev.handle_destroy = usb_hid_handle_destroy;
+    s->dev.handle_destroy = usb_tablet_handle_destroy;
     s->kind = USB_TABLET;
     /* Force poll routine to be run and grab input the first time.  */
     s->changed = 1;

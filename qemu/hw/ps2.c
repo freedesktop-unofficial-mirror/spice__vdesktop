@@ -24,6 +24,9 @@
 #include "hw.h"
 #include "ps2.h"
 #include "console.h"
+#ifdef CONFIG_SPICE
+#include "interface.h"
+#endif
 
 /* debug PC keyboard */
 //#define DEBUG_KBD
@@ -92,6 +95,7 @@ typedef struct {
        not the keyboard controller.  */
     int translate;
     int scancode_set; /* 1=XT, 2=AT, 3=PS/2 */
+    uint8_t leds; //bit 0 scroll lock, bit 1 num lock and bit 2 caps lock
 } PS2KbdState;
 
 typedef struct {
@@ -181,10 +185,101 @@ uint32_t ps2_read_data(void *opaque)
     return val;
 }
 
+#ifdef CONFIG_SPICE
+
+typedef struct KBDLedNotifier KBDLedNotifier;
+struct KBDLedNotifier {
+    void *opaque;
+    keyborad_leads_notifier_t proc;
+    int refs;
+    KBDLedNotifier *next;
+};
+
+static KBDLedNotifier *kbd_leds_notifiers = NULL;
+
+static KBDLedNotifier *register_leds_notifier(keyborad_leads_notifier_t proc, void *opaque)
+{
+    KBDLedNotifier *notifier;
+
+    if (!proc) {
+        return NULL;
+    }
+
+    if (!(notifier = (KBDLedNotifier *)malloc(sizeof(*notifier)))) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    notifier->opaque = opaque;
+    notifier->proc = proc;
+    notifier->refs = 1;
+    notifier->next = kbd_leds_notifiers;
+    kbd_leds_notifiers = notifier;
+    return notifier;
+}
+
+static void hold_led_notifier(KBDLedNotifier* notifier)
+{
+    notifier->refs++;
+}
+
+static void releas_led_notifier(KBDLedNotifier* notifier)
+{
+    if (--notifier->refs) {
+        return;
+    }
+    KBDLedNotifier **now = &kbd_leds_notifiers;
+
+    while (*now != notifier) {
+        now = &(*now)->next;
+    }
+    *now = notifier->next;
+    free(notifier);
+}
+
+static void unregister_leds_notifier(KBDLedNotifier *notifier)
+{
+    KBDLedNotifier **now = &kbd_leds_notifiers;
+    for (;;) {
+        if (*now == notifier) {
+            notifier->proc = NULL;
+            releas_led_notifier(notifier);
+            return;
+        }
+        now = &(*now)->next;
+    }
+}
+
+static void on_leds_change(uint8_t leds)
+{
+    KBDLedNotifier *notifier = kbd_leds_notifiers;
+    KBDLedNotifier *temp;
+
+    while (notifier) {
+        hold_led_notifier(notifier);
+        notifier->proc(notifier->opaque, leds);
+        temp = notifier;
+        notifier = notifier->next;
+        releas_led_notifier(temp);
+    }
+}
+#endif
+
+static void ps2_set_keyboard_leds(PS2KbdState *s, uint8_t new_val)
+{
+    if (new_val == s->leds) {
+        return;
+    }
+    s->leds = new_val;
+#ifdef CONFIG_SPICE
+    on_leds_change(new_val);
+#endif
+}
+
 static void ps2_reset_keyboard(PS2KbdState *s)
 {
     s->scan_enabled = 1;
     s->scancode_set = 2;
+    ps2_set_keyboard_leds(s, 0);
 }
 
 void ps2_write_keyboard(void *opaque, int val)
@@ -259,6 +354,7 @@ void ps2_write_keyboard(void *opaque, int val)
         s->common.write_cmd = -1;
         break;
     case KBD_CMD_SET_LEDS:
+        ps2_set_keyboard_leds(s, val);
         ps2_queue(&s->common, KBD_REPLY_ACK);
         s->common.write_cmd = -1;
         break;
@@ -497,6 +593,7 @@ static void ps2_reset(void *opaque)
     q->rptr = 0;
     q->wptr = 0;
     q->count = 0;
+    s->update_irq(s->update_arg, 0);
 }
 
 static void ps2_common_save (QEMUFile *f, PS2State *s)
@@ -525,6 +622,7 @@ static void ps2_kbd_save(QEMUFile* f, void* opaque)
     qemu_put_be32(f, s->scan_enabled);
     qemu_put_be32(f, s->translate);
     qemu_put_be32(f, s->scancode_set);
+    qemu_put_byte(f, s->leds);
 }
 
 static void ps2_mouse_save(QEMUFile* f, void* opaque)
@@ -548,16 +646,21 @@ static int ps2_kbd_load(QEMUFile* f, void* opaque, int version_id)
 {
     PS2KbdState *s = (PS2KbdState*)opaque;
 
-    if (version_id != 2 && version_id != 3)
+    if (version_id < 2 || version_id > 4)
         return -EINVAL;
 
     ps2_common_load (f, &s->common);
     s->scan_enabled=qemu_get_be32(f);
     s->translate=qemu_get_be32(f);
-    if (version_id == 3)
+    if (version_id >= 3)
         s->scancode_set=qemu_get_be32(f);
     else
         s->scancode_set=2;
+    if (version_id >= 4) {
+        ps2_set_keyboard_leds(s, qemu_get_byte(f));
+    } else {
+        ps2_set_keyboard_leds(s, 0);
+    }
     return 0;
 }
 
@@ -582,6 +685,108 @@ static int ps2_mouse_load(QEMUFile* f, void* opaque, int version_id)
     return 0;
 }
 
+#ifdef CONFIG_SPICE
+
+typedef struct KbdInterface {
+    KeyboardInterface vd_interface;
+    PS2KbdState *keyboard_state;
+} KbdInterface;
+
+static void interface_push_scan_freg(KeyboardInterface *keyboard, uint8_t frag)
+{
+    KbdInterface *interface = (KbdInterface *)keyboard;
+    ps2_put_keycode(interface->keyboard_state, frag);
+}
+
+static uint8_t interface_get_leds(KeyboardInterface *keyboard)
+{
+    KbdInterface *interface = (KbdInterface *)keyboard;
+    return interface->keyboard_state->leds;
+}
+
+static VDObjectRef interface_register_leds_notifier(KeyboardInterface *keyboard,
+                                                     keyborad_leads_notifier_t notifier,
+                                                     void *opaque)
+{
+    if (!notifier) {
+        return 0;
+    }
+    return (VDObjectRef)register_leds_notifier(notifier, opaque);
+}
+
+static void interface_unregister_leds_notifier(KeyboardInterface *keyboard, VDObjectRef notifier)
+{
+    if (!notifier) {
+        return;
+    }
+    unregister_leds_notifier((KBDLedNotifier *)notifier);
+}
+
+static void regitser_keyboard(PS2KbdState *s)
+{
+    KbdInterface *interface = (KbdInterface *)qemu_mallocz(sizeof(*interface));
+    static int keyboard_interface_id = 0;
+
+    if (!interface) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.type = VD_INTERFACE_KEYBOARD;
+    interface->vd_interface.base.id = ++keyboard_interface_id;
+    interface->vd_interface.base.description = "ps2 keyboard";
+    interface->vd_interface.base.major_vertion = VD_INTERFACE_KEYBOARD_MAJOR;
+    interface->vd_interface.base.minor_vertion = VD_INTERFACE_KEYBOARD_MINOR;
+    interface->vd_interface.push_scan_freg = interface_push_scan_freg;
+    interface->vd_interface.get_leds = interface_get_leds;
+    interface->vd_interface.register_leds_notifier = interface_register_leds_notifier;
+    interface->vd_interface.unregister_leds_notifayer = interface_unregister_leds_notifier;
+    interface->keyboard_state = s;
+    add_interface(&interface->vd_interface.base);
+}
+
+typedef struct PS2MouseInterface {
+    MouseInterface vd_interface;
+    PS2MouseState *mouse_state;
+} PS2MouseInterface;
+
+static void interface_moution(MouseInterface* mouse, int dx, int dy, int dz,
+                              uint32_t buttons_state)
+{
+    PS2MouseInterface *interface = (PS2MouseInterface *)mouse;
+    ps2_mouse_event(interface->mouse_state, dx, dy, dz, buttons_state);
+}
+
+static void interface_buttons(MouseInterface* mouse, uint32_t buttons_state)
+{
+    PS2MouseInterface *interface = (PS2MouseInterface *)mouse;
+    ps2_mouse_event(interface->mouse_state, 0, 0, 0, buttons_state);
+}
+
+static void regitser_mouse(PS2MouseState *s)
+{
+    PS2MouseInterface *interface = (PS2MouseInterface *)qemu_mallocz(sizeof(*interface));
+    static int mouse_interface_id = 0;
+    if (!interface) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.type = VD_INTERFACE_MOUSE;
+    interface->vd_interface.base.id = mouse_interface_id++;
+    interface->vd_interface.base.description = "ps2 mouse";
+    interface->vd_interface.base.major_vertion = VD_INTERFACE_MOUSE_MAJOR;
+    interface->vd_interface.base.minor_vertion = VD_INTERFACE_MOUSE_MINOR;
+
+    interface->vd_interface.moution = interface_moution;
+    interface->vd_interface.buttons = interface_buttons;
+
+    interface->mouse_state = s;
+    add_interface(&interface->vd_interface.base);
+}
+
+#endif
+
 void *ps2_kbd_init(void (*update_irq)(void *, int), void *update_arg)
 {
     PS2KbdState *s = (PS2KbdState *)qemu_mallocz(sizeof(PS2KbdState));
@@ -590,9 +795,12 @@ void *ps2_kbd_init(void (*update_irq)(void *, int), void *update_arg)
     s->common.update_arg = update_arg;
     s->scancode_set = 2;
     ps2_reset(&s->common);
-    register_savevm("ps2kbd", 0, 3, ps2_kbd_save, ps2_kbd_load, s);
+    register_savevm("ps2kbd", 0, 4, ps2_kbd_save, ps2_kbd_load, s);
     qemu_add_kbd_event_handler(ps2_put_keycode, s);
     qemu_register_reset(ps2_reset, &s->common);
+#ifdef CONFIG_SPICE
+    regitser_keyboard(s);
+#endif
     return s;
 }
 
@@ -606,5 +814,8 @@ void *ps2_mouse_init(void (*update_irq)(void *, int), void *update_arg)
     register_savevm("ps2mouse", 0, 2, ps2_mouse_save, ps2_mouse_load, s);
     qemu_add_mouse_event_handler(ps2_mouse_event, s, 0, "QEMU PS/2 Mouse");
     qemu_register_reset(ps2_reset, &s->common);
+#ifdef CONFIG_SPICE
+    regitser_mouse(s);
+#endif
     return s;
 }

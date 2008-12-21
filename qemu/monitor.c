@@ -42,6 +42,11 @@
 
 #include "qemu-kvm.h"
 
+#ifdef CONFIG_SPICE
+#include "vd_interface.h"
+#include "interface.h"
+#endif
+
 //#define DEBUG
 //#define DEBUG_COMPLETION
 
@@ -59,20 +64,24 @@
  *
  */
 
-typedef struct term_cmd_t {
+
+typedef struct term_cmd_t term_cmd_t;
+struct term_cmd_t {
     const char *name;
     const char *args_type;
     void *handler;
     const char *params;
     const char *help;
-} term_cmd_t;
+    term_cmd_t* next; 
+};
 
 #define MAX_MON 4
 static CharDriverState *monitor_hd[MAX_MON];
 static int hide_banner;
 
-static const term_cmd_t term_cmds[];
-static const term_cmd_t info_cmds[];
+
+static term_cmd_t *action_commands = NULL;
+static term_cmd_t *info_commands = NULL;
 
 static uint8_t term_outbuf[1024];
 static int term_outbuf_index;
@@ -182,20 +191,22 @@ static int compare_cmd(const char *name, const char *list)
 
 static void help_cmd1(const term_cmd_t *cmds, const char *prefix, const char *name)
 {
-    const term_cmd_t *cmd;
+    const term_cmd_t *cmd = cmds;
 
-    for(cmd = cmds; cmd->name != NULL; cmd++) {
-        if (!name || !strcmp(name, cmd->name))
+    while (cmd) {
+        if (!name || !strcmp(name, cmd->name)) {
             term_printf("%s%s %s -- %s\n", prefix, cmd->name, cmd->params, cmd->help);
+        }
+        cmd = cmd->next;
     }
 }
 
 static void help_cmd(const char *name)
 {
     if (name && !strcmp(name, "info")) {
-        help_cmd1(info_cmds, "info ", NULL);
+        help_cmd1(info_commands, "info ", NULL);
     } else {
-        help_cmd1(term_cmds, "", name);
+        help_cmd1(action_commands, "", name);
         if (name && !strcmp(name, "log")) {
             const CPULogItem *item;
             term_printf("Log items (comma separated):\n");
@@ -231,9 +242,12 @@ static void do_info(const char *item)
 
     if (!item)
         goto help;
-    for(cmd = info_cmds; cmd->name != NULL; cmd++) {
-        if (compare_cmd(item, cmd->name))
+    cmd = info_commands;
+    while (cmd) {
+        if (compare_cmd(item, cmd->name)) {
             goto found;
+        }
+        cmd = cmd->next;
     }
  help:
     help_cmd("info");
@@ -1456,7 +1470,7 @@ static void do_info_balloon(void)
         term_printf("balloon: actual=%d\n", (int)(actual >> 20));
 }
 
-static const term_cmd_t term_cmds[] = {
+static term_cmd_t term_cmds[] = {
     { "help|?", "s?", do_help,
       "[cmd]", "show the help" },
     { "commit", "s", do_commit,
@@ -1554,10 +1568,13 @@ static const term_cmd_t term_cmds[] = {
     { "pci_add", "iss", device_hot_add, "bus nic|storage|host [[vlan=n][,macaddr=addr][,model=type]] [file=file][,if=type][,bus=nr]... [host=02:00.0[,name=string][,dma=none]", "hot-add PCI device" },
     { "pci_del", "ii", device_hot_remove, "bus slot-number", "hot remove PCI device" },
 #endif
+#ifdef CONFIG_QXL
+    { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
+#endif
     { NULL, NULL, },
 };
 
-static const term_cmd_t info_cmds[] = {
+static term_cmd_t info_cmds[] = {
     { "version", "", do_info_version,
       "", "show the version of qemu" },
     { "network", "", do_info_network,
@@ -2315,10 +2332,13 @@ static void monitor_handle_command(const char *cmdline)
     cmdname[len] = '\0';
 
     /* find the command */
-    for(cmd = term_cmds; cmd->name != NULL; cmd++) {
-        if (compare_cmd(cmdname, cmd->name))
+    cmd = action_commands;
+    while (cmd) {
+        if (compare_cmd(cmdname, cmd->name)) {
             goto found;
-    }
+        }
+        cmd = cmd->next;
+    } 
     term_printf("unknown command: '%s'\n", cmdname);
     return;
  found:
@@ -2708,6 +2728,126 @@ static void parse_cmdline(const char *cmdline,
     *pnb_args = nb_args;
 }
 
+#ifdef CONFIG_SPICE
+
+static term_cmd_t* add_command_common(const char *module_name,
+                                      const char *name,
+                                      const char *args_type,
+                                      void *handler,
+                                      const char *params,
+                                      const char *help,
+                                      term_cmd_t** command_list)
+{
+    const char *seperator = ".";
+    term_cmd_t *cmd;
+    char *pos ;
+
+    int malloc_size = sizeof(*cmd) + strlen(module_name) + strlen(seperator) + strlen(name) +
+                       strlen(args_type) + strlen(params) + strlen(help) +  4 /*str term*/;
+
+    if (!(cmd = malloc(malloc_size))) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+
+    pos = (char *)(cmd + 1);
+    strcpy(pos, module_name);
+    strcat(pos, seperator);
+    strcat(pos, name);
+    cmd->name = pos;
+    pos += strlen(pos) + 1;
+
+    strcpy(pos, args_type);
+    cmd->args_type = pos;
+    pos += strlen(pos) + 1;
+
+    strcpy(pos, params);
+    cmd->params = pos;
+    pos += strlen(pos) + 1;
+
+    strcpy(pos, help);
+    cmd->help = pos;
+
+    cmd->handler = handler;
+    cmd->next = NULL;
+    while (*command_list) {
+        command_list = &(*command_list)->next;
+    }
+    *command_list = cmd;
+    return cmd;
+}
+
+static VDObjectRef monitor_add_action_command(QTermInterface *term, const char *module_name,
+                                      const char *name,
+                                      const char *args_type,
+                                      void *handler,
+                                      const char *params,
+                                      const char *help)
+{
+    if (!module_name || !name || !args_type || !handler || !params || !help) {
+        return INVALID_VD_OBJECT_REF;
+    }
+
+    return (VDObjectRef)add_command_common(module_name, name, args_type, handler, params, help, &action_commands);
+}
+
+static VDObjectRef monitor_add_info_command(QTermInterface *term, const char *module_name,
+                                      const char *name,
+                                      void *handler,
+                                      const char *help)
+{
+    if (!module_name || !name || !handler || !help) {
+        return INVALID_VD_OBJECT_REF;
+    }
+
+    return (VDObjectRef)add_command_common(module_name, name, "", handler, "", help, &info_commands);
+}
+
+static void remove_command(term_cmd_t *command, term_cmd_t** command_list)
+{
+    while (*command_list) {
+        if (*command_list == command) {
+            *command_list = command->next;
+            free(command);
+            return;
+        }
+        command_list = &(*command_list)->next;
+    }
+}
+
+static void monitor_remove_action(QTermInterface *term, VDObjectRef command_ref)
+{
+    remove_command((term_cmd_t *)command_ref, &action_commands);
+}
+
+static void monitor_remove_info(QTermInterface *term, VDObjectRef command_ref)
+{
+    remove_command((term_cmd_t *)command_ref, &info_commands);
+}
+
+static void regitser_interface()
+{
+    QTermInterface *interface = (QTermInterface *)qemu_mallocz(sizeof(*interface));
+
+    if (!interface) {
+        printf("%s: malloc failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.type = VD_INTERFACE_QTERM;
+    interface->base.id = 0;
+    interface->base.description = "qemue terminal";
+    interface->base.major_vertion = VD_INTERFACE_QTERM_MAJOR;
+    interface->base.minor_vertion = VD_INTERFACE_QTERM_MINOR;
+    interface->add_action_command_handler = monitor_add_action_command;
+    interface->remove_action_command_handler = monitor_remove_action;
+    interface->add_info_command_handler = monitor_add_info_command;
+    interface->remove_info_command_handler = monitor_remove_info;
+    add_interface(&interface->base);
+}
+
+#endif
+
 void readline_find_completion(const char *cmdline)
 {
     const char *cmdname;
@@ -2739,14 +2879,19 @@ void readline_find_completion(const char *cmdline)
         else
             cmdname = args[0];
         completion_index = strlen(cmdname);
-        for(cmd = term_cmds; cmd->name != NULL; cmd++) {
+        cmd = action_commands;
+        while (cmd) {
             cmd_completion(cmdname, cmd->name);
+            cmd = cmd->next;
         }
     } else {
         /* find the command */
-        for(cmd = term_cmds; cmd->name != NULL; cmd++) {
-            if (compare_cmd(args[0], cmd->name))
-                goto found;
+        cmd = action_commands;
+        while (cmd) {
+            if (compare_cmd(args[0], cmd->name)) {
+                 goto found;
+            }
+            cmd = cmd->next;
         }
         return;
     found:
@@ -2774,8 +2919,10 @@ void readline_find_completion(const char *cmdline)
             /* XXX: more generic ? */
             if (!strcmp(cmd->name, "info")) {
                 completion_index = strlen(str);
-                for(cmd = info_cmds; cmd->name != NULL; cmd++) {
+                cmd = info_commands;
+                while (cmd) {
                     cmd_completion(str, cmd->name);
+                    cmd = cmd->next;
                 }
             } else if (!strcmp(cmd->name, "sendkey")) {
                 completion_index = strlen(str);
@@ -2843,10 +2990,29 @@ static void term_event(void *opaque, int event)
     monitor_start_input();
 }
 
-static int is_first_init = 1;
+static void init_commands(term_cmd_t *init_array, term_cmd_t **pos)
+{
+    term_cmd_t *now = init_array;
+    while (now->name) {
+        now->next = NULL;
+        *pos = now;
+        pos = &now->next;
+        now++;
+    }
+}
+
+void init_monitor_commands()
+{
+    init_commands(term_cmds, &action_commands);
+    init_commands(info_cmds, &info_commands);
+#ifdef CONFIG_SPICE
+    regitser_interface();
+#endif
+}
 
 void monitor_init(CharDriverState *hd, int show_banner)
 {
+    static int is_first_init = 1;
     int i;
 
     if (is_first_init) {

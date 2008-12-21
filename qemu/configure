@@ -184,6 +184,8 @@ fdt="yes"
 signalfd="no"
 eventfd="no"
 cpu_emulation="yes"
+qxl="yes"
+spice="no"
 
 # OS specific
 if check_define __linux__ ; then
@@ -391,6 +393,10 @@ for opt do
   ;;
   --disable-vde) vde="no"
   ;;
+  --disable-qxl) qxl="no"
+  ;;
+  --enable-spice) spice="yes"
+  ;;
   --disable-kqemu) kqemu="no"
   ;;
   --disable-brlapi) brlapi="no"
@@ -569,6 +575,8 @@ echo "  --disable-aio            disable AIO support"
 echo "  --disable-blobs          disable installing provided firmware blobs"
 echo "  --kerneldir=PATH         look for kernel includes in PATH"
 echo "  --disable-cpu-emulation  disables use of qemu cpu emulation code"
+echo "  --disable-qxl            disable qxl"
+echo "  --enable-spice           use spice"
 echo ""
 echo "NOTE: The object files are built at the place where configure is launched"
 exit 1
@@ -1140,6 +1148,26 @@ if [ -x "`which texi2html 2>/dev/null`" ] && \
 fi
 
 ##########################################
+# spice probe
+if test "$spice" = "yes" ; then
+  `pkg-config spice` || spice="no"
+fi
+if test "$spice" = "yes" ; then
+  cat > $TMPC << EOF
+#include <spice.h>
+int main(void) { CoreInterface ci; spice_init(&ci); return 0; }
+EOF
+  spice_cflags=`pkg-config --cflags spice`
+  spice_libs=`pkg-config --libs spice`
+  if $cc $ARCH_CFLAGS -o $TMPE ${OS_CFLAGS} $spice_cflags $TMPC \
+      $spice_libs > /dev/null 2> /dev/null ; then
+    :
+  else
+    spice="no"
+  fi
+fi
+
+##########################################
 # Do we need librt
 cat > $TMPC <<EOF
 #include <signal.h>
@@ -1233,9 +1261,8 @@ echo "uname -r          $uname_release"
 echo "NPTL support      $nptl"
 echo "vde support       $vde"
 echo "AIO support       $aio"
-echo "Install blobs     $blobs"
-echo "KVM support       $kvm"
-echo "fdt support       $fdt"
+echo "QXL               $qxl"
+echo "Spice             $spice"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1543,6 +1570,23 @@ if test "$eventfd" = "yes" ; then
   echo "#define CONFIG_eventfd 1" >> $config_h
 fi
 
+if test "$qxl" = "yes" ; then
+  echo "CONFIG_QXL=yes" >> $config_mak
+  echo "#define CONFIG_QXL 1" >> $config_h
+fi
+
+if test "$spice" = "yes" ; then
+  if test "$qxl" = "no" ; then
+    echo "ERROR: Spice requires QXL device"
+    exit 1;
+  fi
+
+  echo "CONFIG_SPICE=yes" >> $config_mak
+  echo "SPICE_CFLAGS=$spice_cflags" >> $config_mak
+  echo "SPICE_LIBS=$spice_libs" >> $config_mak
+  echo "#define CONFIG_SPICE 1" >> $config_h
+fi
+
 # XXX: suppress that
 if [ "$bsd" = "yes" ] ; then
   echo "#define O_LARGEFILE 0" >> $config_h
@@ -1623,7 +1667,7 @@ case "$target" in
 esac
 
 if test "$target_user_only" = "no" -a "$check_gfx" = "yes" \
-        -a "$sdl" = "no" -a "$cocoa" = "no" ; then
+        -a "$sdl" = "no" -a "$cocoa" = "no" -a "$qxl" = "no" ; then
     echo "ERROR: QEMU requires SDL or Cocoa for graphical output"
     echo "To build QEMU without graphical output configure with --disable-gfx-check"
     echo "Note that this will disable all output from the virtual graphics card"

@@ -151,6 +151,11 @@ ifdef CONFIG_COCOA
 OBJS+=cocoa.o
 endif
 
+ifdef CONFIG_SPICE
+CFLAGS+=$(SPICE_CFLAGS)
+LIBS+=$(SPICE_LIBS)
+endif
+
 ifdef CONFIG_SLIRP
 CPPFLAGS+=-I$(SRC_PATH)/slirp
 SLIRP_OBJS=cksum.o if.o ip_icmp.o ip_input.o ip_output.o \

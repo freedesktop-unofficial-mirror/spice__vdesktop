@@ -151,6 +151,7 @@ static uint16_t expand2[256];
 static uint8_t expand4to8[16];
 
 static void vga_screen_dump(void *opaque, const char *filename);
+static void vga_invalidate_display(void *opaque);
 
 static void vga_dumb_update_retrace_info(VGAState *s)
 {
@@ -389,6 +390,12 @@ static void vga_ioport_write(void *opaque, uint32_t addr, uint32_t val)
     printf("VGA: write addr=0x%04x data=0x%02x\n", addr, val);
 #endif
 
+#ifdef CONFIG_QXL
+    if(using_qxl && qxl_vga_touch()) {
+        vga_invalidate_display(opaque);
+    }
+#endif
+
     switch(addr) {
     case 0x3c0:
         if (s->ar_flip_flop == 0) {
@@ -563,6 +570,12 @@ static void vbe_ioport_write_index(void *opaque, uint32_t addr, uint32_t val)
 static void vbe_ioport_write_data(void *opaque, uint32_t addr, uint32_t val)
 {
     VGAState *s = opaque;
+
+#ifdef CONFIG_QXL
+    if(using_qxl && qxl_vga_touch()) {
+        vga_invalidate_display(opaque);
+    }
+#endif
 
     if (s->vbe_index <= VBE_DISPI_INDEX_NB) {
 #ifdef DEBUG_BOCHS_VBE
@@ -2587,6 +2600,10 @@ int isa_vga_init(DisplayState *ds, uint8_t *vga_ram_base,
     /* XXX: use optimized standard vga accesses */
     cpu_register_physical_memory(VBE_DISPI_LFB_PHYSICAL_ADDRESS,
                                  vga_ram_size, vga_ram_offset);
+    if (kvm_enabled()) {
+        kvm_qemu_log_memory(VBE_DISPI_LFB_PHYSICAL_ADDRESS, vga_ram_size, 1);
+    }
+    s->map_addr = VBE_DISPI_LFB_PHYSICAL_ADDRESS;
 #endif
     return 0;
 }

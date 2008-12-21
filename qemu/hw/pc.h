@@ -158,6 +158,24 @@ void pci_cirrus_vga_init(PCIBus *bus, DisplayState *ds, uint8_t *vga_ram_base,
 void isa_cirrus_vga_init(DisplayState *ds, uint8_t *vga_ram_base,
                          ram_addr_t vga_ram_offset, int vga_ram_size);
 
+/*qxl.c*/
+#ifdef CONFIG_QXL
+
+#define QXL_MEM_SIZE (1024 * 1024 * (32 + 9))
+#define QXL_MAX_MONITORS 4
+
+extern int using_qxl;
+extern int num_qxl_device;
+
+void qxl_init(PCIBus *bus, uint8_t *vram,
+              unsigned long vram_offset,
+              uint32_t vram_size);
+void qxl_init_display(DisplayState *ds);
+int qxl_vga_touch(void);
+void qxl_do_set_log_level(int log_level);
+
+#endif
+
 /* ide.c */
 void isa_ide_init(int iobase, int iobase2, qemu_irq irq,
                   BlockDriverState *hd0, BlockDriverState *hd1);
