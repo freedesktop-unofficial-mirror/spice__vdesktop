@@ -1461,6 +1461,29 @@ static int fcntl_setfl(int fd, int flag)
 
 #define RTC_FREQ 1024
 
+static void sigio_handler(int signum)
+{
+    CPUState *env = cpu_single_env;
+
+    if (env) {
+        cpu_interrupt(env, CPU_INTERRUPT_EXIT);
+#ifdef USE_KQEMU
+        if (env->kqemu_enabled)
+            kqemu_cpu_interrupt(env);
+#endif
+    }
+}
+
+static void init_sigio_handler()
+{
+    struct sigaction act;
+
+    sigfillset(&act.sa_mask);
+    act.sa_flags = 0;
+    act.sa_handler = sigio_handler;
+    sigaction(SIGIO, &act, NULL);
+}
+
 static void enable_sigio_timer(int fd)
 {
     struct sigaction act;
@@ -4851,6 +4874,7 @@ int main(int argc, char **argv, char **envp)
     }
 #endif
     init_monitor_commands();
+    init_sigio_handler();
     register_machines();
     machine = first_machine;
     cpu_model = NULL;
