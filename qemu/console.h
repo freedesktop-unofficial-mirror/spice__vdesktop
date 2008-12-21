@@ -189,7 +189,8 @@ void curses_display_init(DisplayState *ds, int full_screen);
 extern uint8_t _translate_keycode(const int key);
 
 #define VNC_ASYNC_EVENT   1
-#define MAX_ASYNC_EVENTS  VNC_ASYNC_EVENT
+#define RTC_ASYNC_EVENT   2
+#define MAX_ASYNC_EVENTS  RTC_ASYNC_EVENT
 
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */

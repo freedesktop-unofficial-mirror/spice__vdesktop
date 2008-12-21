@@ -27,6 +27,7 @@
 #include "pc.h"
 #include "isa.h"
 #include "hpet_emul.h"
+#include "console.h"
 
 //#define DEBUG_CMOS
 
@@ -217,6 +218,17 @@ static void rtc_set_time(RTCState *s)
     tm->tm_mday = from_bcd(s, s->cmos_data[RTC_DAY_OF_MONTH]);
     tm->tm_mon = from_bcd(s, s->cmos_data[RTC_MONTH]) - 1;
     tm->tm_year = from_bcd(s, s->cmos_data[RTC_YEAR]) + 100;
+    {   /* notify monitoring software of the change */
+        int rtc_ti;
+
+        /* rtc_utc is now declared static. just assume -localtime */
+        /* if (rtc_utc)
+            rtc_ti = timegm(tm);
+        else */
+            rtc_ti = mktime(tm);
+            term_printf_async(RTC_ASYNC_EVENT,
+			      "RTC: new time is UTC%+d\n", rtc_ti - time(NULL));
+    }
 }
 
 static void rtc_copy_date(RTCState *s)
