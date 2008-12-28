@@ -131,6 +131,7 @@ static VDInterface *core_next(CoreInterface *core, VDInterface *prev)
         if (now->interface == prev) {
             return firest_valid_interface(now->next);
         }
+        now = now->next;
     }
     return NULL;
 }

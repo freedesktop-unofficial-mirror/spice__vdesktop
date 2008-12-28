@@ -156,6 +156,7 @@
 #ifdef CONFIG_SPICE
 #include "spice.h"
 #include "interface.h" 
+#include "migration.h" 
 #endif
 
 //#define DEBUG_UNUSED_IOPORT
@@ -5921,6 +5922,7 @@ int main(int argc, char **argv, char **envp)
 
 #ifdef CONFIG_SPICE
     if(using_spice) {
+        tcp_migration_register_interface();
         spice_init(&core_interface);
     }
 #endif

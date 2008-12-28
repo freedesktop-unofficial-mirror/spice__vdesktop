@@ -43,6 +43,8 @@ int inet_connect(const char *str, int socktype);
 int unix_listen(const char *path, char *ostr, int olen);
 int unix_connect(const char *path);
 
+int tcp_set_keepalive(int fd, int idle, int cnt, int intvl);
+
 /* Old, ipv4 only bits.  Don't use for new code. */
 int parse_host_port(struct sockaddr_in *saddr, const char *str);
 int parse_host_src_port(struct sockaddr_in *haddr,

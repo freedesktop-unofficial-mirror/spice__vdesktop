@@ -312,4 +312,29 @@ void socket_set_nonblock(int fd)
     f = fcntl(fd, F_GETFL);
     fcntl(fd, F_SETFL, f | O_NONBLOCK);
 }
+
+int tcp_set_keepalive(int fd, int idle, int cnt, int intvl)
+{
+    int enable = 1;
+
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE,  &enable, sizeof(int))) {
+        perror("setsockopt(alive) failed");
+        return -1;
+    }
+    if (setsockopt(fd, SOL_TCP,    TCP_KEEPIDLE,  &idle,  sizeof(int))) {
+        perror("setsockopt(idle) failed");
+        return -1;
+    }
+    if (setsockopt(fd, SOL_TCP,    TCP_KEEPCNT,   &cnt,   sizeof(int))) {
+        perror("setsockopt(cnt) failed");
+        return -1;
+    }
+    if (setsockopt(fd, SOL_TCP,    TCP_KEEPINTVL, &intvl, sizeof(int))) {
+        perror("setsockopt(intvl) failed");
+        return -1;
+    }
+
+    return 0;
+}
+
 #endif

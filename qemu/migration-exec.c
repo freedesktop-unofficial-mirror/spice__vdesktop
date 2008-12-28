@@ -53,6 +53,12 @@ static int exec_close(FdMigrationState *s)
     return 0;
 }
 
+static void exec_done(struct FdMigrationState* s, int state)
+{
+    s->state = state;
+    migrate_fd_cleanup(s);
+}
+
 MigrationState *exec_start_outgoing_migration(const char *command,
                                              int64_t bandwidth_limit,
                                              int async)
@@ -88,11 +94,13 @@ MigrationState *exec_start_outgoing_migration(const char *command,
     s->close = exec_close;
     s->get_error = file_errno;
     s->write = file_write;
+    s->done = exec_done;
     s->mig_state.cancel = migrate_fd_cancel;
     s->mig_state.get_status = migrate_fd_get_status;
     s->mig_state.release = migrate_fd_release;
 
     s->state = MIG_STATE_ACTIVE;
+    s->save_started = 0;
     s->detach = !async;
     s->bandwidth_limit = bandwidth_limit;
 

@@ -50,25 +50,26 @@ void qemu_start_incoming_migration(const char *uri)
 
 void do_migrate(int detach, const char *uri)
 {
-    MigrationState *s = NULL;
     const char *p;
 
+    if (current_migration && 
+                    !current_migration->release(current_migration)) {
+        term_printf("can't start. aborting previos migration\n");
+        return;
+    }
+    current_migration = NULL;
+
     if (strstart(uri, "tcp:", &p))
-        s = tcp_start_outgoing_migration(p, max_throttle, detach);
+        current_migration = tcp_start_outgoing_migration(p, max_throttle, detach);
 #if !defined(WIN32)
     else if (strstart(uri, "exec:", &p))
-        s = exec_start_outgoing_migration(p, max_throttle, detach);
+        current_migration = exec_start_outgoing_migration(p, max_throttle, detach);
 #endif
     else
         term_printf("unknown migration protocol: %s\n", uri);
 
-    if (s == NULL)
+    if (!current_migration) {
         term_printf("migration failed\n");
-    else {
-        if (current_migration)
-            current_migration->release(current_migration);
-
-        current_migration = s;
     }
 }
 
@@ -128,8 +129,7 @@ void do_info_migrate(void)
 void migrate_fd_error(FdMigrationState *s)
 {
     dprintf("setting error state\n");
-    s->state = MIG_STATE_ERROR;
-    migrate_fd_cleanup(s);
+    s->done(s, MIG_STATE_ERROR);
 }
 
 void migrate_fd_cleanup(FdMigrationState *s)
@@ -139,18 +139,19 @@ void migrate_fd_cleanup(FdMigrationState *s)
     if (s->file) {
         dprintf("closing file\n");
         qemu_fclose(s->file);
+        s->file = NULL;
     }
 
-    if (s->fd != -1)
+    if (s->fd != -1) {
         close(s->fd);
+        s->fd = -1;
+    }
 
     /* Don't resume monitor until we've flushed all of the buffers */
     if (s->detach == 2) {
         monitor_resume();
         s->detach = 0;
     }
-
-    s->fd = -1;
 }
 
 void migrate_fd_put_notify(void *opaque)
@@ -191,6 +192,7 @@ void migrate_fd_connect(FdMigrationState *s)
                                       migrate_fd_close);
 
     dprintf("beginning savevm\n");
+    s->save_started = 1;
     ret = qemu_savevm_state_begin(s->file);
     if (ret < 0) {
         dprintf("failed, %d\n", ret);
@@ -205,7 +207,7 @@ void migrate_fd_put_ready(void *opaque)
 {
     FdMigrationState *s = opaque;
 
-    if (s->state != MIG_STATE_ACTIVE) {
+    if (!s->save_started || s->state != MIG_STATE_ACTIVE) {
         dprintf("put_ready returning because of non-active state\n");
         return;
     }
@@ -217,8 +219,7 @@ void migrate_fd_put_ready(void *opaque)
 
         bdrv_flush_all();
         qemu_savevm_state_complete(s->file);
-        s->state = MIG_STATE_COMPLETED;
-        migrate_fd_cleanup(s);
+        s->done(s, MIG_STATE_COMPLETED);
     }
 }
 
@@ -236,13 +237,10 @@ void migrate_fd_cancel(MigrationState *mig_state)
         return;
 
     dprintf("cancelling migration\n");
-
-    s->state = MIG_STATE_CANCELLED;
-
-    migrate_fd_cleanup(s);
+    s->done(s, MIG_STATE_CANCELLED);
 }
 
-void migrate_fd_release(MigrationState *mig_state)
+int migrate_fd_release(MigrationState *mig_state)
 {
     FdMigrationState *s = migrate_to_fms(mig_state);
 
@@ -253,6 +251,7 @@ void migrate_fd_release(MigrationState *mig_state)
         migrate_fd_cleanup(s);
     }
     free(s);
+    return 1;
 }
 
 void migrate_fd_wait_for_unfreeze(void *opaque)
@@ -279,3 +278,4 @@ int migrate_fd_close(void *opaque)
     FdMigrationState *s = opaque;
     return s->close(s);
 }
+

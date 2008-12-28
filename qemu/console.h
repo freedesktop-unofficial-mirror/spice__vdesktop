@@ -191,7 +191,7 @@ extern uint8_t _translate_keycode(const int key);
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */
 /* monitor.c */
-void init_monitor_commands();
+void init_monitor_commands(void);
 void monitor_init(CharDriverState *hd, int show_banner);
 void term_puts(const char *str);
 void term_vprintf(const char *fmt, va_list ap);

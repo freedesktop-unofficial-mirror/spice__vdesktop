@@ -26,7 +26,7 @@ struct MigrationState
     /* FIXME: add more accessors to print migration info */
     void (*cancel)(MigrationState *s);
     int (*get_status)(MigrationState *s);
-    void (*release)(MigrationState *s);
+    int (*release)(MigrationState *s);
 };
 
 typedef struct FdMigrationState FdMigrationState;
@@ -39,9 +39,11 @@ struct FdMigrationState
     int fd;
     int detach;
     int state;
+    int save_started;
     int (*get_error)(struct FdMigrationState*);
     int (*close)(struct FdMigrationState*);
     int (*write)(struct FdMigrationState*, const void *, size_t);
+    void (*done)(struct FdMigrationState*, int state);
     void *opaque;
 };
 
@@ -62,6 +64,9 @@ MigrationState *exec_start_outgoing_migration(const char *host_port,
 					     int detach);
 
 int tcp_start_incoming_migration(const char *host_port);
+#ifdef CONFIG_SPICE
+void tcp_migration_register_interface(void);
+#endif
 
 MigrationState *tcp_start_outgoing_migration(const char *host_port,
 					     int64_t bandwidth_limit,
@@ -83,7 +88,7 @@ int migrate_fd_get_status(MigrationState *mig_state);
 
 void migrate_fd_cancel(MigrationState *mig_state);
 
-void migrate_fd_release(MigrationState *mig_state);
+int migrate_fd_release(MigrationState *mig_state);
 
 void migrate_fd_wait_for_unfreeze(void *opaque);
 
