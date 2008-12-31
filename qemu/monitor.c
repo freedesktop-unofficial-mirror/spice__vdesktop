@@ -247,7 +247,10 @@ static void do_notify_async_events(char *event_str, char *enable)
 {
     int event;
 
-    return;
+    if (!strcmp(event_str, "vnc"))
+        event = VNC_ASYNC_EVENT;
+    else
+        return;
 
     if (!strcmp(enable, "on"))
         async_printable_events[event] = 1;
@@ -1604,7 +1607,7 @@ static term_cmd_t term_cmds[] = {
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
     { "notify", "ss", do_notify_async_events,
-      "NULL on|off", "enable / disable printing of notifications for the specified event" },
+      "vnc on|off", "enable / disable printing of notifications for the specified event" },
     { NULL, NULL, },
 };
 

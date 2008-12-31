@@ -188,7 +188,8 @@ void curses_display_init(DisplayState *ds, int full_screen);
 /* x_keymap.c */
 extern uint8_t _translate_keycode(const int key);
 
-#define MAX_ASYNC_EVENTS  0
+#define VNC_ASYNC_EVENT   1
+#define MAX_ASYNC_EVENTS  VNC_ASYNC_EVENT
 
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */

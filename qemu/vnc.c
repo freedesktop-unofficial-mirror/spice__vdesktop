@@ -784,6 +784,8 @@ static int vnc_client_io_error(VncState *vs, int ret, int last_errno)
 	vs->wiremode = VNC_WIREMODE_CLEAR;
 #endif /* CONFIG_VNC_TLS */
         audio_del(vs);
+        if (vs->display)
+            term_printf_async(VNC_ASYNC_EVENT, "VNC: Closing down connection %s\n", vs->display);
 	return 0;
     }
     return ret;
@@ -2450,6 +2452,8 @@ void vnc_display_close(DisplayState *ds)
     vs->x509verify = 0;
 #endif
     audio_del(vs);
+    if (vs->display)
+        term_printf_async(VNC_ASYNC_EVENT, "VNC: Closing down connection %s\n", vs->display);
 }
 
 int vnc_display_password(DisplayState *ds, const char *password)
