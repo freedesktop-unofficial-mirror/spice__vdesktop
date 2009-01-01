@@ -3653,6 +3653,7 @@ void qemu_system_reset_request(void)
 
 void qemu_system_shutdown_request(void)
 {
+    term_printf_async(SHUTDOWN_ASYNC_EVENT, "GUEST: Got shutdown request\n");
     shutdown_requested = 1;
     if (cpu_single_env)
         cpu_interrupt(cpu_single_env, CPU_INTERRUPT_EXIT);
@@ -3660,6 +3661,7 @@ void qemu_system_shutdown_request(void)
 
 void qemu_system_powerdown_request(void)
 {
+    term_printf_async(SHUTDOWN_ASYNC_EVENT, "GUEST: Got powerdown request\n");
     powerdown_requested = 1;
     if (cpu_single_env)
         cpu_interrupt(cpu_single_env, CPU_INTERRUPT_EXIT);
