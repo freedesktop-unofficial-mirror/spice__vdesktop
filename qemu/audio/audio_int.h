@@ -204,6 +204,10 @@ extern struct audio_driver coreaudio_audio_driver;
 extern struct audio_driver dsound_audio_driver;
 extern struct audio_driver esd_audio_driver;
 extern struct audio_driver pa_audio_driver;
+#ifdef CONFIG_SPICE
+extern struct audio_driver interface_audio_driver;
+#endif
+
 extern struct mixeng_volume nominal_volume;
 
 void audio_pcm_init_info (struct audio_pcm_info *info, struct audsettings *as);

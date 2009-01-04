@@ -116,6 +116,9 @@ endif
 ifdef CONFIG_DSOUND
 AUDIO_OBJS += dsoundaudio.o
 endif
+ifeq ($(CONFIG_SPICE),yes)
+AUDIO_OBJS += vd_interface_audio.o
+endif
 ifdef CONFIG_FMOD
 AUDIO_OBJS += fmodaudio.o
 audio/audio.o audio/fmodaudio.o: CPPFLAGS := -I$(CONFIG_FMOD_INC) $(CPPFLAGS)
