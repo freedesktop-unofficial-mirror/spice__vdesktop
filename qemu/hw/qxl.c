@@ -19,7 +19,7 @@
 
 //#define QXL_IO_MEM
 
-#define QXL_RAM_SIZE (32 * 1024 * 1024)
+#define QXL_VRAM_SIZE 4096
 #define QXL_DEFAULT_COMPRESSION_LEVEL 0
 #define QXL_SHARED_VGA_MODE FALSE
 #define QXL_SAVE_VERSION 3
@@ -191,6 +191,8 @@ static void qxl_reset_state(PCIQXLDevice *d);
 
 static QXLVga qxl_vga;
 
+inline uint32_t msb_mask(uint32_t val);
+
 inline void atomic_or(uint32_t *var, uint32_t add)
 {
    __asm__ __volatile__ ("lock; orl %1, %0" : "+m" (*var) : "r" (add) : "memory");
@@ -211,26 +213,15 @@ static void qxl_init_modes()
     }
 }
 
-static UINT32 qxl_max_x_res()
+static UINT32 qxl_max_res_area()
 {
-    UINT32 res = 0;
+    UINT32 area = 0;
     int i;
 
     for (i = 0; i < sizeof(qxl_modes) / sizeof(QXLMode); i++) {
-        res = MAX(qxl_modes[i].x_res, res);
+        area = MAX(qxl_modes[i].x_res*qxl_modes[i].y_res, area);
     }
-    return res;
-}
-
-static UINT32 qxl_max_y_res()
-{
-    UINT32 res = 0;
-    int i;
-
-    for (i = 0; i < sizeof(qxl_modes) / sizeof(QXLMode); i++) {
-        res = MAX(qxl_modes[i].y_res, res);
-    }
-    return res;
+    return area;
 }
 
 static int irq_level(PCIQXLDevice *d)
@@ -255,6 +246,21 @@ void qxl_do_set_log_level(int log_level)
         d->state.rom->log_level = log_level;
         d = d->dev_next;
     }
+}
+
+uint32_t qxl_get_total_mem_size(uint32_t in_ram_size)
+{
+    uint32_t ram_size = msb_mask(in_ram_size*2 - 1);
+    uint32_t rom_size = sizeof(QXLRom) + sizeof(QXLModes) + sizeof(qxl_modes);
+    rom_size = MAX(rom_size, TARGET_PAGE_SIZE);
+    rom_size = msb_mask(rom_size*2 - 1);
+
+    return (QXL_VRAM_SIZE + rom_size + ram_size);
+}
+
+uint32_t qxl_get_min_ram_size(void)
+{
+    return (qxl_max_res_area() * sizeof(uint32_t) * 3);
 }
 
 static void qxl_send_events(PCIQXLDevice *d, uint32_t events)
@@ -805,7 +811,7 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
     rom->id = d->id;
     rom->mode = 0;
     rom->modes_offset = sizeof(QXLRom);
-    rom->draw_area_size =qxl_max_x_res() * sizeof(uint32_t) * qxl_max_y_res();
+    rom->draw_area_size = qxl_max_res_area()* sizeof(uint32_t);
     rom->compression_level = QXL_DEFAULT_COMPRESSION_LEVEL;
     rom->log_level = 0;
 
@@ -821,7 +827,7 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
     return (uint32_t)((uint8_t *)&modes->modes[i] - buf);
 }
 
-static void init_qxl_ram(QXLState *s, uint8_t *buf)
+static void init_qxl_ram(QXLState *s, uint8_t *buf, uint32_t actual_ram_size)
 {
     uint32_t draw_area_size;
     uint32_t ram_header_size;
@@ -830,9 +836,9 @@ static void init_qxl_ram(QXLState *s, uint8_t *buf)
 
     draw_area_size = s->rom->draw_area_size;
     ram_header_size = ALIGN(sizeof(*s->ram), 8);
-    ASSERT(ram_header_size + draw_area_size < QXL_RAM_SIZE);
+    ASSERT(ram_header_size + draw_area_size < actual_ram_size);
 
-    s->rom->ram_header_offset = QXL_RAM_SIZE - ram_header_size;
+    s->rom->ram_header_offset = actual_ram_size - ram_header_size;
     s->ram = (QXLRam *)(buf + s->rom->ram_header_offset);
     s->ram->magic = QXL_RAM_MAGIC;
     RING_INIT(&s->ram->cmd_ring);
@@ -842,8 +848,7 @@ static void init_qxl_ram(QXLState *s, uint8_t *buf)
 
     s->rom->draw_area_offset = s->rom->ram_header_offset - draw_area_size;
     s->rom->pages_offset = 0;
-    s->rom->num_io_pages = (QXL_RAM_SIZE - (draw_area_size + ram_header_size)) >> TARGET_PAGE_BITS;
-    ASSERT((s->rom->num_io_pages << TARGET_PAGE_BITS) >= VGA_RAM_SIZE);
+    s->rom->num_io_pages = (actual_ram_size - (draw_area_size + ram_header_size)) >> TARGET_PAGE_BITS;
     printf("%s: npages %u\n", __FUNCTION__, s->rom->num_io_pages);
 }
 
@@ -1423,12 +1428,13 @@ static void creat_native_worker(PCIQXLDevice *d, int id)
 static int device_id = 0;
 
 void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset, 
-              uint32_t vram_size)
+              uint32_t vram_size, uint32_t in_ram_size)
 {
     PCIQXLDevice *d;
     PCIConf *pci_conf;
     uint32_t rom_size;
     uint32_t max_fb;
+    uint32_t qxl_ram_size = msb_mask(in_ram_size*2 - 1);
 
     d = (PCIQXLDevice*)pci_register_device(bus, QXL_DEV_NAME,
                                            sizeof(PCIQXLDevice), -1, NULL,
@@ -1460,21 +1466,21 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
 
     memset(vram, 0xff, vram_size);
 
-    ASSERT(vram_size > QXL_RAM_SIZE);
-    rom_size = init_qxl_rom(d, vram + QXL_RAM_SIZE , vram_size - QXL_RAM_SIZE, &max_fb);
+    ASSERT(vram_size > qxl_ram_size);
+    rom_size = init_qxl_rom(d, vram + qxl_ram_size , vram_size - qxl_ram_size, &max_fb);
     rom_size = MAX(rom_size, TARGET_PAGE_SIZE);  
     rom_size = msb_mask(rom_size * 2 - 1);
-    d->state.rom_offset = vram_offset + QXL_RAM_SIZE;
+    d->state.rom_offset = vram_offset + qxl_ram_size;
     d->state.rom_size = rom_size;
 
-    ASSERT(QXL_RAM_SIZE + rom_size < vram_size);
-    init_qxl_ram(&d->state, vram);
+    ASSERT(qxl_ram_size + rom_size < vram_size);
+    init_qxl_ram(&d->state, vram, in_ram_size);
     d->state.ram_offset = vram_offset;
-    d->state.ram_size = QXL_RAM_SIZE;
+    d->state.ram_size = qxl_ram_size;
 
-    d->state.vram = vram + rom_size + QXL_RAM_SIZE;
-    d->state.vram_offset = vram_offset + rom_size + QXL_RAM_SIZE;
-    d->state.vram_size = msb_mask(vram_size - (QXL_RAM_SIZE + rom_size));
+    d->state.vram = vram + rom_size + qxl_ram_size;
+    d->state.vram_offset = vram_offset + rom_size + qxl_ram_size;
+    d->state.vram_size = msb_mask(vram_size - (qxl_ram_size + rom_size));
 
     printf("%s: rom(%p, 0x%x, 0x%x) ram(%p, 0x%x, 0x%x) vram(%p, 0x%lx, 0x%x)\n",
            __FUNCTION__,
@@ -1487,13 +1493,7 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
            d->state.vram,
            d->state.vram_offset,
            d->state.vram_size);
-   
-    if (d->state.vram_size < max_fb) {
-        printf("%s: bad vram size, vram %u rom %u max_fb %u\n",
-               __FUNCTION__, vram_size, rom_size, max_fb);
-        exit(-1);
-    }
-
+ 
     pci_register_io_region(&d->pci_dev, QXL_IO_RANGE_INDEX,
                            msb_mask(QXL_IO_RANGE_SIZE * 2 - 1),
                            PCI_ADDRESS_SPACE_IO, ioport_map);

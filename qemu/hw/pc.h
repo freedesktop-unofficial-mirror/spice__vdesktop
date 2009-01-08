@@ -161,18 +161,22 @@ void isa_cirrus_vga_init(DisplayState *ds, uint8_t *vga_ram_base,
 /*qxl.c*/
 #ifdef CONFIG_QXL
 
-#define QXL_MEM_SIZE (1024 * 1024 * (32 + 9))
+#define QXL_MAX_RAM_SIZE (256 * 1024 * 1024)
 #define QXL_MAX_MONITORS 4
 
 extern int using_qxl;
 extern int num_qxl_device;
+extern uint32_t qxl_ram_size;
 
 void qxl_init(PCIBus *bus, uint8_t *vram,
               unsigned long vram_offset,
-              uint32_t vram_size);
+              uint32_t vram_size, uint32_t in_ram_size);
+
 void qxl_init_display(DisplayState *ds);
 int qxl_vga_touch(void);
 void qxl_do_set_log_level(int log_level);
+uint32_t qxl_get_total_mem_size(uint32_t in_ram_size);
+uint32_t qxl_get_min_ram_size(void);
 
 #endif
 

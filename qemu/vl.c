@@ -270,8 +270,10 @@ static QEMUTimer *icount_rt_timer;
 static QEMUTimer *icount_vm_timer;
 
 #ifdef CONFIG_QXL
+#define DEFAULT_QXL_RAM_MB_SIZE 64
 int using_qxl = 0;
 int num_qxl_device = 0;
+uint32_t qxl_ram_size = 0;
 #endif
 
 #ifdef CONFIG_SPICE
@@ -4047,7 +4049,9 @@ static void help(int exitcode)
            "-name string    set the name of the guest\n"
            "-uuid %%08x-%%04x-%%04x-%%04x-%%012x specify machine UUID\n"
 #ifdef CONFIG_QXL
-           "-qxl <num>      use qxl display device\n"
+           "-qxl <num>[,ram=megs]\n"
+           "                use 'num' qxl display devices, each with RAM size of 'megs' MB\n"
+           "                [default=%d]\n"
 #endif
 #ifdef CONFIG_SPICE
            "-spice <args>   use spice\n"
@@ -4182,6 +4186,9 @@ static void help(int exitcode)
            ,
            "qemu",
            DEFAULT_RAM_SIZE,
+#ifdef CONFIG_QXL
+           DEFAULT_QXL_RAM_MB_SIZE,
+#endif
 #ifndef _WIN32
            DEFAULT_NETWORK_SCRIPT,
            DEFAULT_NETWORK_DOWN_SCRIPT,
@@ -5378,7 +5385,9 @@ int main(int argc, char **argv, char **envp)
 #endif
 #ifdef CONFIG_QXL
             case QEMU_OPTION_qxl: {
-                int devices = strtol(optarg, NULL, 0);
+                const char *p;
+                int devices = strtol(optarg, (char **)&p, 0);
+
                 if (devices < 0 || devices > QXL_MAX_MONITORS ) {
                     fprintf(stderr, "qemu: invalid number of qxl devices, use 0 to %d\n",
                             QXL_MAX_MONITORS);
@@ -5386,6 +5395,34 @@ int main(int argc, char **argv, char **envp)
                 }
                 num_qxl_device = devices;
                 using_qxl = (num_qxl_device > 0) ? 1 : 0;
+                if (using_qxl) {
+                    if (*p==',') {
+                        char buf[32];
+                        p++;
+                        if (get_param_value(buf, sizeof(buf), "ram", p)) {
+                            qxl_ram_size = strtol(buf, NULL, 0);
+                        }
+                        else {
+                            fprintf(stderr, "qemu: invalid qxl format\n");
+                            exit(-1);
+                        }
+                    } else if (*p!='\0') {
+                        fprintf(stderr, "qemu: invalid qxl format\n");
+                        exit(-1);
+                    } else {
+                        qxl_ram_size = DEFAULT_QXL_RAM_MB_SIZE;
+                    }
+
+                    qxl_ram_size <<= 20;
+       
+                    if ((qxl_ram_size > QXL_MAX_RAM_SIZE) ||
+                        (qxl_ram_size < qxl_get_min_ram_size()))
+                    {
+                        fprintf(stderr, "qemu: invalid qxl ram size\n");
+                        exit(-1);
+                    }
+                }
+
                 break;
             }
 #endif
@@ -5772,7 +5809,7 @@ int main(int argc, char **argv, char **envp)
 
 #ifdef CONFIG_QXL
     if (using_qxl) {
-        phys_ram_size += num_qxl_device * QXL_MEM_SIZE;
+        phys_ram_size += num_qxl_device * qxl_get_total_mem_size(qxl_ram_size);
     }
 #endif
 
