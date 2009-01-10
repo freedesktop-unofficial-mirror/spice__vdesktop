@@ -820,9 +820,9 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
     BlockDriverState *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     BlockDriverState *fd[MAX_FD];
 
-    if (ram_size >= 0xe0000000 ) {
-        above_4g_mem_size = ram_size - 0xe0000000;
-        below_4g_mem_size = 0xe0000000;
+    if (ram_size >= 0xc0000000 ) {
+        above_4g_mem_size = ram_size - 0xc0000000;
+        below_4g_mem_size = 0xc0000000;
     } else {
         below_4g_mem_size = ram_size;
     }

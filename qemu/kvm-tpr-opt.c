@@ -142,7 +142,7 @@ static int instruction_is_ok(CPUState *env, uint64_t rip, int is_write)
     uint32_t addr;
     uint64_t p;
 
-    if ((rip & 0xf0000000) != 0x80000000 && (rip & 0xf0000000) != 0xe0000000)
+    if ((rip & 0xc1000000) != 0x80000000 && (rip & 0xc1000000) != 0xc0000000)
 	return 0;
     if (kvm_rsp_read(env) == 0)
         return 0;

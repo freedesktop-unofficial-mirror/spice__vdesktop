@@ -565,8 +565,8 @@ void setup_mtrr(void)
     wrmsr_smp(MSR_MTRRfix4K_E8000, 0);
     wrmsr_smp(MSR_MTRRfix4K_F0000, 0);
     wrmsr_smp(MSR_MTRRfix4K_F8000, 0);
-    /* Mark 3.5-4GB as UC, anything not specified defaults to WB */
-    wrmsr_smp(MTRRphysBase_MSR(0), 0xe0000000ull | 0);
+    /* Mark 3-4GB as UC, anything not specified defaults to WB */
+    wrmsr_smp(MTRRphysBase_MSR(0), 0xc0000000ull | 0);
     wrmsr_smp(MTRRphysMask_MSR(0), ~(0x20000000ull - 1) | 0x800);
     wrmsr_smp(MSR_MTRRdefType, 0xc06);
 }
@@ -924,8 +924,8 @@ static void pci_bios_init_device(PCIDevice *d)
     case 0x0300: /* Display controller - VGA compatible controller */
         if (vendor_id != 0x1234)
             goto default_map;
-        /* VGA: map frame buffer to default Bochs VBE address */
-        pci_set_io_region_addr(d, 0, 0xE0000000);
+        /* VGA: map frame buffer */
+        pci_set_io_region_addr(d, 0, 0xC0000000);
         break;
     case 0x0800: /* Generic system peripheral - PIC */
         if (vendor_id == PCI_VENDOR_ID_IBM) {
@@ -1016,7 +1016,7 @@ void pci_for_each_device(void (*init_func)(PCIDevice *d))
 void pci_bios_init(void)
 {
     pci_bios_io_addr = 0xc000;
-    pci_bios_mem_addr = 0xf0000000;
+    pci_bios_mem_addr = 0xc0000000 + 0x1000000;
     pci_bios_bigmem_addr = ram_size;
     if (pci_bios_bigmem_addr < 0x90000000)
         pci_bios_bigmem_addr = 0x90000000;

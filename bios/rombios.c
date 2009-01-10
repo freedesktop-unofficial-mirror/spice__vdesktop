@@ -9829,7 +9829,7 @@ pcibios_init_sel_reg:
 pcibios_init_iomem_bases:
   push bp
   mov  bp, sp
-  mov  eax, #0xe0000000 ;; base for memory init
+  mov  eax, #0xc0000000 ;; base for memory init
   push eax
   mov  ax, #0xc000 ;; base for i/o init
   push ax
