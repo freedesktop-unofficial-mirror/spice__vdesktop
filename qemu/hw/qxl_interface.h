@@ -29,6 +29,7 @@ typedef struct QXLDevInfo {
     int use_hardware_cursor;
     uint32_t bits;
     DrawArea draw_area;
+    uint32_t ram_size;
 } QXLDevInfo;
 
 typedef struct QXLWorker QXLWorker;

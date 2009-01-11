@@ -297,6 +297,8 @@ static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
 {
     QXLState *state = &d->state;
     QXLMode *mode;
+    
+    info->ram_size = state->rom->num_io_pages << TARGET_PAGE_BITS; 
 
     if (state->mode == QXL_MODE_VGA) {
         info->x_res = qxl_vga.ds->width;
