@@ -4801,6 +4801,11 @@ void *alloc_mem_area(size_t memory, unsigned long *len, const char *path)
     int flags;
 #endif
 
+    if (!kvm_has_sync_mmu()) {
+        fprintf(stderr, "host lacks mmu notifiers, disabling --mem-path\n");
+        return NULL;
+    }
+
     if (asprintf(&filename, "%s/kvm.XXXXXX", path) == -1)
 	return NULL;
 
