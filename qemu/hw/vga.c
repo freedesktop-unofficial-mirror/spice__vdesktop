@@ -2600,10 +2600,9 @@ int isa_vga_init(DisplayState *ds, uint8_t *vga_ram_base,
     /* XXX: use optimized standard vga accesses */
     cpu_register_physical_memory(VBE_DISPI_LFB_PHYSICAL_ADDRESS,
                                  vga_ram_size, vga_ram_offset);
-    if (kvm_enabled()) {
-        kvm_qemu_log_memory(VBE_DISPI_LFB_PHYSICAL_ADDRESS, vga_ram_size, 1);
-    }
     s->map_addr = VBE_DISPI_LFB_PHYSICAL_ADDRESS;
+    s->map_end = s->map_addr + vga_ram_size;
+    vga_dirty_log_start(s);
 #endif
     return 0;
 }
