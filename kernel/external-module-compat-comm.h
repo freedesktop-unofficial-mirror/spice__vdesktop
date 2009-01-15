@@ -250,6 +250,7 @@ static inline void blahblah(void)
 
 /* pagefault_enable(), page_fault_disable() - 2.6.20 */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+#if RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,2)
 
 static inline void pagefault_disable(void)
 {
@@ -276,6 +277,9 @@ static inline void pagefault_enable(void)
 	preempt_check_resched();
 }
 
+#else
+#include <linux/uaccess.h>
+#endif
 #endif
 
 /* vm ops ->fault() was introduced in 2.6.23. */
@@ -405,7 +409,9 @@ static inline ktime_t ktime_get(void)
 
 /* __aligned arrived in 2.6.21 */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21)
+#if !defined(RHEL_RELEASE_CODE) || (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(5,2) && !defined(__aligned))
 #define __aligned(x) __attribute__((__aligned__(x)))
+#endif
 #endif
 
 #include <linux/mm.h>
