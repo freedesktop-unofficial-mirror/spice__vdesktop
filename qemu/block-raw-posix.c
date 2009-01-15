@@ -253,7 +253,7 @@ static int raw_pwrite_aligned(BlockDriverState *bs, int64_t offset,
 
     ret = fd_open(bs);
     if (ret < 0)
-        return ret;
+        return -errno;
 
     if (offset >= 0 && lseek(s->fd, offset, SEEK_SET) == (off_t)-1) {
         ++(s->lseek_err_cnt);
@@ -263,7 +263,7 @@ static int raw_pwrite_aligned(BlockDriverState *bs, int64_t offset,
                               s->fd, bs->filename, offset, buf, count,
                               bs->total_sectors, errno, strerror(errno));
         }
-        return -1;
+        return -EIO;
     }
     s->lseek_err_cnt = 0;
 
@@ -278,7 +278,7 @@ static int raw_pwrite_aligned(BlockDriverState *bs, int64_t offset,
 
 label__raw_write__success:
 
-    return ret;
+    return  (ret < 0) ? -errno : ret;
 }
 
 
