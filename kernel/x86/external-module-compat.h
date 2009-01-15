@@ -10,6 +10,9 @@
 
 #include <asm/msr.h>
 
+/* for the MSR_VM_* constants that were moved to svm.h */
+#include <asm/svm.h>
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 
 #ifndef _EFER_SCE
