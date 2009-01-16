@@ -75,6 +75,8 @@ struct term_cmd_t {
     term_cmd_t* next; 
 };
 
+int async_printable_events[MAX_ASYNC_EVENTS];
+
 #define MAX_MON 4
 static CharDriverState *monitor_hd[MAX_MON];
 static int hide_banner;
@@ -131,6 +133,24 @@ void term_printf(const char *fmt, ...)
     va_start(ap, fmt);
     term_vprintf(fmt, ap);
     va_end(ap);
+}
+
+void term_printf_async(const int event, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+
+    if (event > MAX_ASYNC_EVENTS)
+        goto cleanup;
+    if (!async_printable_events[event])
+        goto cleanup;
+
+    term_printf("# ");
+    term_vprintf(fmt, ap);
+
+cleanup:
+    va_end(ap);
+    return;
 }
 
 void term_print_filename(const char *filename)
@@ -221,6 +241,18 @@ static void help_cmd(const char *name)
 static void do_help(const char *name)
 {
     help_cmd(name);
+}
+
+static void do_notify_async_events(char *event_str, char *enable)
+{
+    int event;
+
+    return;
+
+    if (!strcmp(enable, "on"))
+        async_printable_events[event] = 1;
+    else
+        async_printable_events[event] = 0;
 }
 
 static void do_commit(const char *device)
@@ -1571,6 +1603,8 @@ static term_cmd_t term_cmds[] = {
 #ifdef CONFIG_QXL
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
+    { "notify", "ss", do_notify_async_events,
+      "NULL on|off", "enable / disable printing of notifications for the specified event" },
     { NULL, NULL, },
 };
 
