@@ -21,6 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
+#include "../kernel/ksm/ksm.h"
 #include "hw/hw.h"
 #include "hw/boards.h"
 #include "hw/usb.h"
@@ -4825,6 +4827,37 @@ static void termsig_setup(void)
 
 #endif
 
+int ksm_register_memory(void)
+{
+    int fd;
+    int ksm_fd;
+    int r = 1;
+    struct ksm_memory_region ksm_region;
+
+    fd = open("/dev/ksm", O_RDWR | O_TRUNC, (mode_t)0600);
+    if (fd == -1)
+        goto out;
+
+    ksm_fd = ioctl(fd, KSM_CREATE_SHARED_MEMORY_AREA);
+    if (ksm_fd == -1)
+        goto out_free;
+
+    ksm_region.npages = phys_ram_size / TARGET_PAGE_SIZE;
+    ksm_region.addr = (unsigned long) phys_ram_base;
+    r = ioctl(ksm_fd, KSM_REGISTER_MEMORY_REGION, &ksm_region);
+    if (r)
+        goto out_free1;
+
+    return r;
+
+out_free1:
+    close(ksm_fd);
+out_free:
+    close(fd);
+out:
+    return r;
+}
+
 int main(int argc, char **argv, char **envp)
 {
 #ifdef CONFIG_GDBSTUB
@@ -5880,6 +5913,8 @@ int main(int argc, char **argv, char **envp)
 
     /* init the dynamic translator */
     cpu_exec_init_all(tb_size * 1024 * 1024);
+
+    ksm_register_memory();
 
     bdrv_init();
 
