@@ -41,7 +41,12 @@ LDFLAGS += -pthread -lrt
 
 kvmtrace_objs= kvmtrace.o
 
+all: kvmctl ksmctl
+
 kvmctl: $(kvmctl_objs)
+	$(CC) $(LDFLAGS) $^ -o $@
+
+ksmctl: ksmctl.c
 	$(CC) $(LDFLAGS) $^ -o $@
 
 kvmtrace: $(kvmtrace_objs)
@@ -56,4 +61,4 @@ $(libcflat): $(cflatobjs)
 -include .*.d
 
 clean: arch_clean
-	$(RM) kvmctl kvmtrace *.o *.a .*.d $(libcflat) $(cflatobjs)
+	$(RM) kvmctl ksmctl kvmtrace *.o *.a .*.d $(libcflat) $(cflatobjs)
