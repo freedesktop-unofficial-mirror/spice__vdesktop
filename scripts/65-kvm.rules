@@ -1,1 +1,2 @@
 KERNEL=="kvm", NAME="%k", GROUP="kvm", MODE="0660"
+KERNEL=="ksm", NAME="%k", GROUP="kvm", MODE="0660"
