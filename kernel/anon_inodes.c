@@ -146,6 +146,7 @@ err_put_filp:
 	fput(file);
 	return error;
 }
+EXPORT_SYMBOL(anon_inode_getfd);
 
 /*
  * A single inode exist for all anon_inode files. Contrary to pipes,
@@ -214,6 +215,7 @@ void kvm_exit_anon_inodes(void)
 	mntput(anon_inode_mnt);
 	unregister_filesystem(&anon_inode_fs_type);
 }
+EXPORT_SYMBOL(kvm_anon_inode_getfd);
 
 #else
 
@@ -253,6 +255,7 @@ int kvm_anon_inode_getfd(const char *name,
 {
 	return anon_inode_getfd(name, fops, priv);
 }
+EXPORT_SYMBOL(kvm_anon_inode_getfd);
 
 #else
 
@@ -262,6 +265,7 @@ int kvm_anon_inode_getfd(const char *name,
 {
 	return anon_inode_getfd(name, fops, priv, flags);
 }
+EXPORT_SYMBOL(kvm_anon_inode_getfd);
 
 #endif
 
