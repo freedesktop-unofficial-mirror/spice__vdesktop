@@ -47,6 +47,16 @@ all:: header-link prerequisite
 		-include include/linux/autoconf.h \
 		-include `pwd`/$(ARCH_DIR)/external-module-compat.h $(module_defines)"
 		"$$@"
+ifndef SKIP_KSM
+	cp Module.symvers ksm
+	$(MAKE) -C $(KERNELDIR) M=`pwd`/ksm \
+		LINUXINCLUDE="-I`pwd`/include -Iinclude \
+		$(if $(KERNELSOURCEDIR),-Iinclude2 -I$(KERNELSOURCEDIR)/include) \
+		-Iarch/${ARCH_DIR}/include -I`pwd`/include-compat \
+		-include include/linux/autoconf.h \
+		-include `pwd`/$(ARCH_DIR)/external-module-compat.h $(module_defines)"
+		"$$@"
+endif
 
 sync: header-sync source-sync header-link
 
@@ -103,6 +113,9 @@ include $(MAKEFILE_PRE)
 install:
 	mkdir -p $(DESTDIR)/$(INSTALLDIR)
 	cp $(ARCH_DIR)/*.ko $(DESTDIR)/$(INSTALLDIR)
+ifndef SKIP_KSM
+	cp $(ARCH_DIR)/ksm/*.ko $(DESTDIR)/$(INSTALLDIR)
+endif
 	for i in $(ORIGMODDIR)/drivers/kvm/*.ko \
 		 $(ORIGMODDIR)/arch/$(ARCH_DIR)/kvm/*.ko; do \
 		if [ -f "$$i" ]; then mv "$$i" "$$i.orig"; fi; \
@@ -127,3 +140,4 @@ rpm:	all
 
 clean:
 	$(MAKE) -C $(KERNELDIR) M=`pwd` $@
+	$(MAKE) -C $(KERNELDIR) M=`pwd`/ksm $@

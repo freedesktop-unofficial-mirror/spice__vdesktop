@@ -77,6 +77,7 @@ install-rpm:
 	make -C qemu DESTDIR=$(DESTDIR)/ install
 	ln -sf /usr/kvm/bin/qemu-system-x86_64 $(DESTDIR)/$(bin)
 	install -m 755 kvm_stat $(DESTDIR)/$(bindir)/kvm_stat
+	install -m 755 user/ksmctl $(DESTDIR)/$(bindir)/ksmctl
 	cp scripts/kvm $(DESTDIR)/$(initdir)/kvm
 	cp scripts/qemu-ifup $(DESTDIR)/$(confdir)/qemu-ifup
 	install -t $(DESTDIR)/etc/udev/rules.d scripts/*kvm*.rules
