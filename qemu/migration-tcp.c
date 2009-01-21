@@ -450,6 +450,7 @@ static void tcp_incoming_load_vm(void)
     qemu_set_fd_handler2(in_state.listener, NULL, NULL, NULL, NULL);
     close(in_state.listener);
     in_state.listener = -1;
+    term_printf_async(MIGRATION_ASYNC_EVENT, "migration: migration process finished\n");
     vm_start();
 
 error:

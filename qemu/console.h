@@ -191,7 +191,8 @@ extern uint8_t _translate_keycode(const int key);
 #define VNC_ASYNC_EVENT   1
 #define RTC_ASYNC_EVENT   2
 #define SHUTDOWN_ASYNC_EVENT 3
-#define MAX_ASYNC_EVENTS  SHUTDOWN_ASYNC_EVENT
+#define MIGRATION_ASYNC_EVENT 4
+#define MAX_ASYNC_EVENTS  MIGRATION_ASYNC_EVENT
 
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */
