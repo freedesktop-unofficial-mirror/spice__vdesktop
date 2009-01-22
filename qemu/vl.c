@@ -3649,6 +3649,7 @@ void qemu_system_reset_request(void)
         cpu_interrupt(cpu_single_env, CPU_INTERRUPT_EXIT);
     }
     main_loop_break();
+    term_printf_async(REBOOT_ASYNC_EVENT, "GUEST: Got reboot request\n");
 }
 
 void qemu_system_shutdown_request(void)
