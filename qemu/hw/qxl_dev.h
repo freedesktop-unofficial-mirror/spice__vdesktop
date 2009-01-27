@@ -293,6 +293,46 @@ typedef struct ATTR_PACKED QXLImage {
     };    
 } QXLImage;
 
+
+#define VDI_PORT_DEVICE_ID 0x0121
+#define VDI_PORT_REVISION 0x01
+
+#define VDI_PORT_INTERRUPT (1 << 0)
+
+#define VDI_PORT_MAGIC (*(UINT32*)"VDIP")
+
+typedef struct ATTR_PACKED VDIPortPacket {
+    UINT32 gen;
+    UINT32 size;
+    UINT8 data[512 - 2 * sizeof(UINT32)];
+} VDIPortPacket;
+
+RING_DECLARE(VDIPortRing, VDIPortPacket, 32);
+
+enum {
+    VDI_PORT_IO_RANGE_INDEX,
+    VDI_PORT_RAM_RANGE_INDEX,
+};
+
+enum {
+    VDI_PORT_IO_CONNECTION,
+    VDI_PORT_IO_NOTIFY = 4,
+    VDI_PORT_IO_UPDATE_IRQ = 8,
+
+    VDI_PORT_IO_RANGE_SIZE = 12
+};
+
+typedef struct ATTR_PACKED VDIPortRam {
+    UINT32 magic;
+    UINT32 generation;
+    UINT32 int_pending;
+    UINT32 int_mask;
+    VDIPortRing input;
+    VDIPortRing output;
+    UINT32 reserv[32];
+} VDIPortRam;
+
+
 #ifndef __GNUC__
 #pragma pack(pop)
 #endif

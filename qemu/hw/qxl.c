@@ -23,6 +23,7 @@
 #define QXL_DEFAULT_COMPRESSION_LEVEL 0
 #define QXL_SHARED_VGA_MODE FALSE
 #define QXL_SAVE_VERSION 3
+#define VDI_PORT_SAVE_VERSION 1
 
 #define ASSERT(x) if (!(x)) {                               \
 	printf("%s: ASSERT %s failed\n", __FUNCTION__, #x); 	\
@@ -36,12 +37,19 @@
 #define FALSE 0
 
 #define QXL_DEV_NAME "qxl"
+#define VDI_PORT_DEV_NAME "vdi_port"
 
 #define PCI_CLASS_DISPLAY 0x03
 #define PCI_DISPLAY_SUBCLASS_VGA 0x00
 #define PCI_DISPLAY_VGA_PROGIF 0x00
 #define PCI_DISPLAY_SUBCLASS_OTHER 0x80
 #define PCI_DISPLAY_OTHER_PROGIF 0x80
+
+
+#define PCI_CLASS_COM_CONTROLLER 0x07
+#define PCI_COM_CONTROLLER_SUBCLASS_OTHER 0x80
+#define PCI_COM_CONTROLLER_SUBCLASS_OTHER_PROGIF 0x00
+
 
 typedef struct __attribute__ ((__packed__)) PCIConf_s /*little-endian*/ {
     uint16_t vendor_ID;
@@ -130,6 +138,21 @@ struct PCIQXLDevice {
 #endif
 };
 
+typedef struct PCIVDIPortDevice {
+    PCIDevice pci_dev;
+    uint32_t io_base;
+    uint32_t ram_offset;
+    uint32_t ram_size;
+    VDIPortRam *ram;
+    uint32_t connected;
+#ifdef CONFIG_SPICE
+    int active_interface;
+    VDIPortInterface interface;
+    VDIPortPlug *plug;
+    int plug_read_pos;
+#endif
+} PCIVDIPortDevice;
+
 static PCIQXLDevice *dev_list = NULL;
 static pthread_t main_thread;
 
@@ -193,18 +216,18 @@ static QXLVga qxl_vga;
 
 inline uint32_t msb_mask(uint32_t val);
 
-inline void atomic_or(uint32_t *var, uint32_t add)
+static inline void atomic_or(uint32_t *var, uint32_t add)
 {
    __asm__ __volatile__ ("lock; orl %1, %0" : "+m" (*var) : "r" (add) : "memory");
 }
 
-inline uint32_t atomic_exchange(uint32_t val, uint32_t *ptr)
+static inline uint32_t atomic_exchange(uint32_t val, uint32_t *ptr)
 {
    __asm__ __volatile__("xchgl %0, %1" : "+q"(val), "+m" (*ptr) : : "memory");
    return val;
 }
 
-static void qxl_init_modes()
+static void qxl_init_modes(void)
 {
     int i;
 
@@ -213,7 +236,7 @@ static void qxl_init_modes()
     }
 }
 
-static UINT32 qxl_max_res_area()
+static UINT32 qxl_max_res_area(void)
 {
     UINT32 area = 0;
     int i;
@@ -227,10 +250,9 @@ static UINT32 qxl_max_res_area()
 static int irq_level(PCIQXLDevice *d)
 {
     return !!(d->state.ram->int_pending & d->state.ram->int_mask);
-
 }
 
-void qxl_update_irq()
+static void qxl_update_irq(void)
 {
     PCIQXLDevice *d = dev_list;
     while (d) {
@@ -252,10 +274,12 @@ uint32_t qxl_get_total_mem_size(uint32_t in_ram_size)
 {
     uint32_t ram_size = msb_mask(in_ram_size*2 - 1);
     uint32_t rom_size = sizeof(QXLRom) + sizeof(QXLModes) + sizeof(qxl_modes);
+    uint32_t vdi_port_ram_size = msb_mask(sizeof(VDIPortRam) * 2 - 1);
+
     rom_size = MAX(rom_size, TARGET_PAGE_SIZE);
     rom_size = msb_mask(rom_size*2 - 1);
 
-    return (QXL_VRAM_SIZE + rom_size + ram_size);
+    return (QXL_VRAM_SIZE + rom_size + ram_size + vdi_port_ram_size);
 }
 
 uint32_t qxl_get_min_ram_size(void)
@@ -574,14 +598,14 @@ static void qxl_set_mode(PCIQXLDevice *d, uint32_t mode)
     d->worker->attach(d->worker);
 }
 
-static void qxl_add_vga_client()
+static void qxl_add_vga_client(void)
 {
     if (qxl_vga.active_clients++ == 0) {
         qemu_mod_timer(qxl_vga.timer, qemu_get_clock(rt_clock));
     }
 }
 
-static void qxl_remove_vga_client()
+static void qxl_remove_vga_client(void)
 {
     qxl_vga.active_clients--;
 }
@@ -633,6 +657,212 @@ static void qxl_reset(PCIQXLDevice *d)
         d->state.mode = QXL_MODE_UNDEFINED;
         qxl_notify_mode_change(d);
     }
+}
+
+static void vdi_port_mew_gen(PCIVDIPortDevice *d)
+{
+    d->ram->generation = (d->ram->generation + 1 == 0) ? 1 : d->ram->generation + 1;
+}
+
+static int vdi_port_irq_level(PCIVDIPortDevice *d)
+{
+    return !!(d->ram->int_pending & d->ram->int_mask);
+}
+
+static void vdi_port_notify_guest(PCIVDIPortDevice *d)
+{
+    uint32_t events = VDI_PORT_INTERRUPT;
+    mb();
+    if ((d->ram->int_pending & events) == events) {
+        return;
+    }
+    atomic_or(&d->ram->int_pending, events);
+    qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));
+}
+
+#ifdef CONFIG_SPICE
+
+static VDObjectRef vdi_port_interface_plug(VDIPortInterface *port, VDIPortPlug* plug)
+{
+    PCIVDIPortDevice *d = container_of(port, PCIVDIPortDevice, interface);
+
+    if (d->plug) {
+        return INVALID_VD_OBJECT_REF;
+    }
+    d->plug = plug;
+    return (VDObjectRef)plug;
+}
+
+static void vdi_port_interface_unplug(VDIPortInterface *port, VDObjectRef plug)
+{
+    PCIVDIPortDevice *d = container_of(port, PCIVDIPortDevice, interface);
+    if (!plug || plug != (VDObjectRef)d->plug) {
+        return;
+    }
+    d->plug = NULL;
+    d->plug_read_pos = 0;
+    vdi_port_mew_gen(d);
+    vdi_port_notify_guest(d);
+}
+
+static int vdi_port_interface_write(VDIPortInterface *port, VDObjectRef plug,
+                                    const uint8_t *buf, int len)
+{
+    PCIVDIPortDevice *d = container_of(port, PCIVDIPortDevice, interface);
+    VDIPortRing *ring = &d->ram->output;
+    int do_notify = FALSE;
+    int actual_write = 0;
+    while (len) {
+        VDIPortPacket *packet;
+        int notify;
+        int wait;
+
+        RING_PROD_WAIT(ring, wait);
+        if (wait) {
+            break;
+        }
+        packet = RING_PROD_ITEM(ring);
+        packet->gen = d->ram->generation;
+        packet->size = MIN(len, sizeof(packet->data));
+        memcpy(packet->data, buf, packet->size);
+        RING_PUSH(ring, notify);
+        do_notify = do_notify || notify;   
+        len -= packet->size;
+        buf += packet->size;
+        actual_write += packet->size;
+    }
+
+    if (do_notify) {
+        vdi_port_notify_guest(d);
+    }
+    return actual_write;
+}
+
+static int vdi_port_interface_read(VDIPortInterface *port, VDObjectRef plug,
+                                   uint8_t *buf, int len)
+{
+    PCIVDIPortDevice *d = container_of(port, PCIVDIPortDevice, interface);
+    VDIPortRing *ring = &d->ram->input;
+    uint32_t gen = d->ram->generation;
+    int do_notify = FALSE;
+    int actual_read = 0;
+    
+    while (!RING_IS_EMPTY(ring) &&  RING_CONS_ITEM(ring)->gen != gen) {
+        int notify;
+
+        RING_POP(ring, notify);
+        do_notify = do_notify || notify;
+    }
+    while (len) {
+        VDIPortPacket *packet;
+        int wait;
+        int now;
+
+        RING_CONS_WAIT(ring, wait);
+
+        if (wait) {
+            break;
+        }
+
+        packet = RING_CONS_ITEM(ring);
+        if (packet->size > sizeof(packet->data)) {
+            printf("%s: bad packet size\n", __FUNCTION__);
+            return 0;
+        }
+        now = MIN(len, packet->size - d->plug_read_pos);
+        memcpy(buf, packet->data + d->plug_read_pos, now);
+        len -= now;
+        buf += now;
+        actual_read +=  now;
+        if ((d->plug_read_pos += now) == packet->size) {
+            int notify;
+
+            d->plug_read_pos = 0;
+            RING_POP(ring, notify);
+            do_notify = do_notify || notify;
+        }
+    }
+
+    if (do_notify) {
+        vdi_port_notify_guest(d);
+    }
+    return actual_read;
+}
+
+static void vdi_port_register_interface(PCIVDIPortDevice *d)
+{
+    VDIPortInterface *interface = &d->interface;
+    static int interface_id = 0;
+
+    if (d->active_interface ) {
+        return;
+    }
+    
+    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.type = VD_INTERFACE_VDI_PORT;
+    interface->base.id = ++interface_id;
+    interface->base.description = "vdi port";
+    interface->base.major_vertion = VD_INTERFACE_VDI_PORT_MAJOR;
+    interface->base.minor_vertion = VD_INTERFACE_VDI_PORT_MINOR;
+
+    interface->plug = vdi_port_interface_plug;
+    interface->unplug = vdi_port_interface_unplug;
+    interface->write = vdi_port_interface_write;
+    interface->read = vdi_port_interface_read;
+
+    d->active_interface = TRUE;
+    add_interface(&interface->base);
+}
+
+static void vdi_port_unregister_interface(PCIVDIPortDevice *d)
+{
+    if (!d->active_interface ) {
+        return;
+    }
+    d->active_interface = FALSE;
+    remove_interface(&d->interface.base);
+}
+
+#endif
+
+static uint32_t vdi_port_dev_connect(PCIVDIPortDevice *d)
+{
+    if (d->connected) {
+        printf("%s: already connected\n", __FUNCTION__);
+        return 0;
+    }
+    vdi_port_mew_gen(d);
+    d->connected = TRUE;
+#ifdef CONFIG_SPICE
+    vdi_port_register_interface(d);
+#endif
+    return d->ram->generation;
+}
+
+static void vdi_port_dev_disconnect(PCIVDIPortDevice *d)
+{
+    if (!d->connected) {
+        printf("%s: not connected\n", __FUNCTION__);
+        return;
+    }
+    d->connected = FALSE;
+#ifdef CONFIG_SPICE
+    vdi_port_unregister_interface(d);
+#endif
+}
+
+static void vdi_port_dev_notify(PCIVDIPortDevice *d)
+{
+    if (!d->connected) {
+        printf("%s: not connected\n", __FUNCTION__);
+        return;
+    }
+#ifdef CONFIG_SPICE
+    if (!d->plug) {
+        return;
+    }
+    d->plug->wakeup(d->plug);
+#endif
 }
 
 static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
@@ -691,7 +921,6 @@ static uint32_t ioport_read(void *opaque, uint32_t addr)
     printf("%s: unexpected\n", __FUNCTION__);
     return 0xff;
 }
-
 
 static void ioport_map(PCIDevice *pci_dev, int region_num, 
                        uint32_t addr, uint32_t size, int type)
@@ -1156,7 +1385,7 @@ static void qxl_vm_change_state_handler(void *opaque, int running)
     }
 }
 
-void init_pipe_signaling(PCIQXLDevice *d)
+static void init_pipe_signaling(PCIQXLDevice *d)
 {
    if (pipe(d->pipe_fd) < 0) {
        printf("%s:pipe creation failed\n", __FUNCTION__);
@@ -1252,13 +1481,13 @@ static void interface_attache_worker(QXLInterface *qxl, QXLWorker *qxl_worker)
     interface->d->worker = qxl_worker;
 }
 
-void interface_set_compression_level(QXLInterface *qxl, int level)
+static void interface_set_compression_level(QXLInterface *qxl, int level)
 {
     PCIQXLDevice *d = ((Interface *)qxl)->d;
     d->state.rom->compression_level = level;
 }
 
-void interface_set_mm_time(QXLInterface *qxl, uint32_t mm_time)
+static void interface_set_mm_time(QXLInterface *qxl, uint32_t mm_time)
 {
     PCIQXLDevice *d = ((Interface *)qxl)->d;
     d->state.rom->mm_clock = mm_time;
@@ -1427,7 +1656,169 @@ static void creat_native_worker(PCIQXLDevice *d, int id)
     ASSERT(d->worker);
 }
 
-static int device_id = 0;
+static void vdi_port_write_dword(void *opaque, uint32_t addr, uint32_t val)
+{
+    PCIVDIPortDevice *d = (PCIVDIPortDevice *)opaque;
+    uint32_t io_port = addr - d->io_base;
+#ifdef DEBUG_QXL
+    printf("%s: addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
+#endif
+    switch (io_port) {
+    case VDI_PORT_IO_NOTIFY:
+        vdi_port_dev_notify(d);
+        break;
+    case VDI_PORT_IO_UPDATE_IRQ:
+        qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));
+        break;
+    case VDI_PORT_IO_CONNECTION:
+        vdi_port_dev_disconnect(d);
+        break;
+    default:
+         printf("%s: unexpected addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
+    };
+}
+
+static uint32_t vdi_port_read_dword(void *opaque, uint32_t addr)
+{
+    PCIVDIPortDevice *d = (PCIVDIPortDevice *)opaque;
+    uint32_t io_port = addr - d->io_base;
+#ifdef DEBUG_QXL
+    printf("%s: addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
+#endif
+    if (io_port == VDI_PORT_IO_CONNECTION) {
+        return vdi_port_dev_connect(d);
+    } else {
+         printf("%s: unexpected addr 0x%x\n", __FUNCTION__, addr);
+    }
+    return 0xffffffff;
+}
+
+static void vdi_port_io_map(PCIDevice *pci_dev, int region_num,
+                             uint32_t addr, uint32_t size, int type)
+{
+    PCIVDIPortDevice *d = (PCIVDIPortDevice *)pci_dev;
+
+    printf("%s: base 0x%x size 0x%x\n", __FUNCTION__, addr, size);
+    d->io_base = addr;
+    register_ioport_write(addr, size, 4, vdi_port_write_dword, pci_dev);
+    register_ioport_read(addr, size, 4, vdi_port_read_dword, pci_dev);
+}
+
+static void vdi_port_ram_map(PCIDevice *pci_dev, int region_num,
+                       uint32_t addr, uint32_t size, int type)
+{
+    PCIVDIPortDevice *d = (PCIVDIPortDevice *)pci_dev;
+
+    printf("%s: addr 0x%x size 0x%x\n", __FUNCTION__, addr, size);
+
+    ASSERT((addr & (size - 1)) == 0);
+    ASSERT(size ==  d->ram_size);
+
+    cpu_register_physical_memory(addr, size, d->ram_offset | IO_MEM_ROM);
+}
+
+static void vdi_port_reset(PCIVDIPortDevice *d)
+{
+    memset(d->ram, 0, sizeof(*d->ram));
+    RING_INIT(&d->ram->input);
+    RING_INIT(&d->ram->output);
+    d->ram->magic = VDI_PORT_MAGIC;
+    d->ram->generation = 0;
+    d->ram->int_pending = 0;
+    d->ram->int_mask = 0;
+    d->connected = 0;
+#ifdef CONFIG_SPICE
+    d->plug_read_pos = 0;
+#endif
+}
+
+static void vdi_port_reset_handler(void *opaque)
+{
+    PCIVDIPortDevice *d = (PCIVDIPortDevice *)opaque;
+#ifdef CONFIG_SPICE
+    vdi_port_unregister_interface(d);
+#endif
+    vdi_port_reset(d);
+}
+
+static void vdi_port_save(QEMUFile* f, void* opaque)
+{
+    PCIVDIPortDevice* d = (PCIVDIPortDevice*)opaque;
+
+    pci_device_save(opaque, f);
+    qemu_put_be32(f, d->connected);
+}
+
+static int vdi_port_load(QEMUFile* f,void* opaque,int version_id)
+{
+    PCIVDIPortDevice* d = (PCIVDIPortDevice*)opaque;
+    int ret;
+
+#ifdef CONFIG_SPICE
+    vdi_port_unregister_interface(d);
+#endif
+    if ((ret = pci_device_load(&d->pci_dev, f))) {
+       printf("%s: error=%d\n", __FUNCTION__, ret);
+       return ret;
+    }
+    d->connected = qemu_get_be32(f);
+    if (d->connected) {
+#ifdef CONFIG_SPICE
+        vdi_port_register_interface(d);
+#endif
+    }
+    return 0;
+}
+
+static void vdi_port_vm_change_state_handler(void *opaque, int running)
+{
+    PCIVDIPortDevice* d=(PCIVDIPortDevice*)opaque;
+
+    if (running) {
+        qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));   
+    }
+}
+
+static void vdi_port_init(PCIBus *bus, uint8_t *ram, unsigned long ram_offset, 
+                                uint32_t ram_size)
+{
+    PCIVDIPortDevice *d;
+    PCIConf *pci_conf;
+
+    if (!(d = (PCIVDIPortDevice*)pci_register_device(bus, VDI_PORT_DEV_NAME,
+                                           sizeof(PCIVDIPortDevice), -1, NULL,
+                                           NULL))) {
+        printf("%s: register devic failed\n", __FUNCTION__);
+        exit(-1);
+    }
+    pci_conf = (PCIConf *)d->pci_dev.config;
+
+    pci_conf->vendor_ID = QUMRANET_PCI_VENDOR_ID;
+    pci_conf->device_ID = VDI_PORT_DEVICE_ID;
+    pci_conf->revision = VDI_PORT_REVISION;
+    pci_conf->class_base = PCI_CLASS_COM_CONTROLLER;
+    pci_conf->class_sub = PCI_COM_CONTROLLER_SUBCLASS_OTHER;
+    pci_conf->class_prog_if = PCI_COM_CONTROLLER_SUBCLASS_OTHER_PROGIF;
+    pci_conf->interrupt_pin = 1;
+
+    d->ram = (VDIPortRam *)ram;
+    d->ram_offset = ram_offset;
+    vdi_port_reset(d);
+    d->ram_size = ram_size;
+
+    pci_register_io_region(&d->pci_dev, VDI_PORT_IO_RANGE_INDEX,
+                           msb_mask(VDI_PORT_IO_RANGE_SIZE * 2 - 1),
+                           PCI_ADDRESS_SPACE_IO, vdi_port_io_map);
+
+    pci_register_io_region(&d->pci_dev, VDI_PORT_RAM_RANGE_INDEX,
+                           d->ram_size , PCI_ADDRESS_SPACE_MEM,
+                           vdi_port_ram_map);
+
+    register_savevm(VDI_PORT_DEV_NAME, 0, VDI_PORT_SAVE_VERSION,
+                    vdi_port_save, vdi_port_load, d);
+    qemu_register_reset(vdi_port_reset_handler, d);
+    qemu_add_vm_change_state_handler(vdi_port_vm_change_state_handler, d);
+}
 
 void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset, 
               uint32_t vram_size, uint32_t in_ram_size)
@@ -1437,7 +1828,16 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     uint32_t rom_size;
     uint32_t max_fb;
     uint32_t qxl_ram_size = msb_mask(in_ram_size*2 - 1);
+    uint32_t vdi_port_ram_size = msb_mask(sizeof(VDIPortRam) * 2 - 1);
 
+    static int device_id = 0;
+    
+    if (device_id == 0) {
+        vdi_port_init(bus, vram, vram_offset, vdi_port_ram_size);
+    }
+    vram += vdi_port_ram_size;
+    vram_offset += vdi_port_ram_size;
+    vram_size -= vdi_port_ram_size;
     d = (PCIQXLDevice*)pci_register_device(bus, QXL_DEV_NAME,
                                            sizeof(PCIQXLDevice), -1, NULL,
                                            NULL);
