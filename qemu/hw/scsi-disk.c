@@ -683,6 +683,7 @@ static int32_t scsi_send_command(SCSIDevice *d, uint32_t tag,
         /* The normal LEN field for this command is zero.  */
 	memset(outbuf, 0, 8);
 	bdrv_get_geometry(s->bdrv, &nb_sectors);
+        nb_sectors /= s->cluster_size;
         /* Returned value is the address of the last sector.  */
         if (nb_sectors) {
             nb_sectors--;
@@ -783,6 +784,7 @@ static int32_t scsi_send_command(SCSIDevice *d, uint32_t tag,
             DPRINTF("SAI READ CAPACITY(16)\n");
             memset(outbuf, 0, len);
             bdrv_get_geometry(s->bdrv, &nb_sectors);
+            nb_sectors /= s->cluster_size;
             /* Returned value is the address of the last sector.  */
             if (nb_sectors) {
                 nb_sectors--;
