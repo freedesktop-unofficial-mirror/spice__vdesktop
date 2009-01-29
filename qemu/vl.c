@@ -5978,7 +5978,7 @@ int main(int argc, char **argv, char **envp)
                         devname);
                 exit(1);
             }
-            vmchannel_hds[i] = qemu_chr_open(devname);
+            vmchannel_hds[i] = qemu_chr_open("vmchannel", devname);
             if (!vmchannel_hds[i]) {
                 fprintf(stderr, "qemu: could not open vmchannel device '%s'\n", 
                         devname);
