@@ -1,3 +1,2 @@
-obj-m := ksm-mem.o
-ksm-mem-objs := ksm.o
-ksm-mem-objs := ksm.o wp_notifier.o
+obj-m := ksm.o
+ksm-objs := ksm_main.o wp_notifier.o

@@ -182,7 +182,7 @@ start () {
 
     grep -q GenuineIntel /proc/cpuinfo && /sbin/modprobe kvm-intel
     grep -q AuthenticAMD /proc/cpuinfo && /sbin/modprobe kvm-amd
-    /sbin/modprobe ksm-mem
+    /sbin/modprobe ksm
 }
 
 stop () {
@@ -197,7 +197,7 @@ stop () {
     ip link set ${switch} down
     brctl delbr ${switch}
 
-    /sbin/modprobe -r ksm-mem
+    /sbin/modprobe -r ksm
     grep -q GenuineIntel /proc/cpuinfo && /sbin/modprobe -r kvm-intel
     grep -q AuthenticAMD /proc/cpuinfo && /sbin/modprobe -r kvm-amd
     /sbin/modprobe -r kvm
