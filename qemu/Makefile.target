@@ -699,6 +699,9 @@ OBJS += pcnet.o
 OBJS += rtl8139.o
 OBJS += e1000.o
 
+# PCI Hypercall
+OBJS+= hypercall.o
+
 OBJS += device-hotplug.o
 
 ifeq ($(USE_KVM_DEVICE_ASSIGNMENT), 1)
