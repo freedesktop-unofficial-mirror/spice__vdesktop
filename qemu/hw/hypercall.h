@@ -23,22 +23,24 @@
  * THE SOFTWARE.
  */
 
-#define HCR_REGISTER    0x00  // Hypercall Command Register WR
-#define HSR_REGISTER    0x04  // Hypercall Status Register RD
+#define HCR_REGISTER    0x0   // Command register
+#define HSR_REGISTER    0x04  // Status register
 #define HP_TXSIZE       0x08
 #define HP_TXBUFF       0x0c
 #define HP_RXSIZE       0x10
-#define HP_RXBUFF       0x14
+#define HP_VERSION_REGISTER 0x14
+#define HP_RXBUFF       0x18
 
-// HCR_REGISTER commands
-#define HCR_DI		1 // disable interrupts
-#define HCR_EI		2 // enable interrupts
-#define HCR_GRS		4 // Global reset
-#define HCR_RESET	(HCR_GRS|HCR_DI)
+#define HP_VERSION 3
 
+//After version check
+#define HP_DRIVER_INITELIZED 1
+
+// Bits in HCR_REGISTER
+#define HCR_IRQ_ON	1
 
 // Bits in HSR_REGISTER
-#define HSR_VDR		0x01  // vmchannel Data is ready to be read
+#define HSR_PENDING	1
 
 #define HP_MEM_SIZE    0xE0
 

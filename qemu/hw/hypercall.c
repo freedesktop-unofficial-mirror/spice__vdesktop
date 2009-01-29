@@ -48,30 +48,34 @@ typedef struct HypercallState {
     uint32_t txsize;
     uint32_t txbuff;
     uint32_t rxsize;
+    uint32_t version;
     uint8_t  RxBuff[HP_MEM_SIZE];
     uint8_t  txbufferaccu[HP_MEM_SIZE];
     int      txbufferaccu_offset;
     int      irq;
     PCIDevice *pci_dev;
     uint32_t index;
+    uint32_t driver_state;
 } HypercallState;
 
 static HypercallState *pHypercallStates[MAX_VMCHANNEL_DEVICES] = {NULL};
 
 //#define HYPERCALL_DEBUG 1
 
+static void hypercall_update_irq(HypercallState *s);
+
 static void hp_reset(HypercallState *s)
 {
-    s->hcr = HCR_DI;
+    s->hcr = 0;
     s->hsr = 0;
     s->txsize = 0;
     s->txbuff = 0;
     s->rxsize= 0;
     s->txbufferaccu_offset = 0;
+    s->version = HP_VERSION;
+    s->driver_state = 0;
+    hypercall_update_irq(s);
 }
-
-static void hypercall_update_irq(HypercallState *s);
-
 
 static void hp_ioport_write(void *opaque, uint32_t addr, uint32_t val)
 {
@@ -84,17 +88,22 @@ static void hp_ioport_write(void *opaque, uint32_t addr, uint32_t val)
 
     switch(addr)
     {
-        case HCR_REGISTER:
-        {
-            s->hcr = val;
-	    if (s->hcr & HCR_DI)
+	case HSR_REGISTER: {
+                s->hsr = (s->hsr & ~HSR_PENDING) + (val & HSR_PENDING);
                 hypercall_update_irq(s);
-            if (val & HCR_GRS){
-                hp_reset(s);
-            }
-            break;
         }
-
+        break;
+        case HCR_REGISTER: {
+                s->hcr = (s->hcr & ~HCR_IRQ_ON) + (val & HCR_IRQ_ON);
+                hypercall_update_irq(s);
+        }
+        break;
+        case HP_VERSION_REGISTER:
+                if (s->version == val)
+                    s->driver_state |= HP_DRIVER_INITELIZED;
+                else 
+                    printf("%s:version mismatch: ours %d, driver's %d\n", __FUNCTION__, s->version, val);
+        break;
         case HP_TXSIZE:
         {
             // handle the case when the we are being called when txsize is not 0
@@ -103,6 +112,7 @@ static void hp_ioport_write(void *opaque, uint32_t addr, uint32_t val)
             }
             if (val > HP_MEM_SIZE) {
                 printf("txsize is larger than allowed by hw!!!\n");
+                break;
             }
             s->txsize = val;
             s->txbufferaccu_offset = 0;
@@ -119,7 +129,12 @@ static void hp_ioport_write(void *opaque, uint32_t addr, uint32_t val)
             s->txbufferaccu[s->txbufferaccu_offset] = val;
             s->txbufferaccu_offset++;
             if (s->txbufferaccu_offset >= s->txsize) {
-                qemu_chr_write(vmchannel_hds[s->index].vmchannel_hd, s->txbufferaccu, s->txsize);
+		int rs;
+                rs = qemu_chr_write(vmchannel_hds[s->index].vmchannel_hd, s->txbufferaccu, s->txsize);
+		if (rs < 0)
+			printf("%s:error from qemu_chr_write\n", __FUNCTION__);
+		else if (rs != s->txsize)
+			printf("%s:error from qemu_chr_write, read %d/%d bytes\n", __FUNCTION__, rs, s->txsize);
                 s->txbufferaccu_offset = 0;
                 s->txsize = 0;
             }
@@ -139,8 +154,6 @@ static uint32_t hp_ioport_read(void *opaque, uint32_t addr)
 
     addr &= 0xff;
 #ifdef HYPERCALL_DEBUG
-    // Since HSR_REGISTER is being repeatedly read in the guest ISR we don't print it
-    if (addr != HSR_REGISTER)
         printf("%s: addr=0x%x", __FUNCTION__, addr);
 #endif
 
@@ -156,11 +169,14 @@ static uint32_t hp_ioport_read(void *opaque, uint32_t addr)
 
     switch (addr)
     {
-    case HSR_REGISTER:
+    case HP_VERSION_REGISTER:
+	ret = s->version;
+	break;
+     case HSR_REGISTER:
         ret = s->hsr;
-        if (ret & HSR_VDR) {
-            s->hsr &= ~HSR_VDR;
-        }
+        break;
+     case HCR_REGISTER:
+        ret = s->hcr;
         break;
     case HP_RXSIZE:
         ret = s->rxsize;
@@ -198,8 +214,15 @@ static void hp_map(PCIDevice *pci_dev, int region_num,
 
 static void hypercall_update_irq(HypercallState *s)
 {
-    /* PCI irq */
-    qemu_set_irq(s->pci_dev->irq[0], !(s->hcr & HCR_DI));
+    int irq_level = (s->hsr & HSR_PENDING) && (s->hcr & HCR_IRQ_ON);
+
+    if (!(s->driver_state & HP_DRIVER_INITELIZED))
+        return;
+
+#ifdef HYPERCALL_DEBUG
+    printf("%s, irq_level=%d ,hsr=%d hcr=%d\n", __FUNCTION__, irq_level, s->hsr, s->hcr);
+#endif
+    qemu_set_irq(s->pci_dev->irq[s->pci_dev->config[0x3d]-1], irq_level != 0);
 }
 
 static void hc_save(QEMUFile* f,void* opaque)
@@ -218,7 +241,7 @@ static void hc_save(QEMUFile* f,void* opaque)
     qemu_put_be32s(f, &s->txbufferaccu_offset);
     qemu_put_be32s(f, &s->irq);
     qemu_put_be32s(f, &s->index);
-
+    qemu_put_be32s(f, &s->driver_state);
 }
 
 static int hc_load(QEMUFile* f,void* opaque,int version_id)
@@ -226,7 +249,7 @@ static int hc_load(QEMUFile* f,void* opaque,int version_id)
     HypercallState* s=(HypercallState*)opaque;
     int ret;
 
-    if (version_id != 1)
+    if (version_id > 2)
         return -EINVAL;
 
     ret = pci_device_load(s->pci_dev, f);
@@ -244,10 +267,15 @@ static int hc_load(QEMUFile* f,void* opaque,int version_id)
     qemu_get_be32s(f, &s->irq);
     qemu_get_be32s(f, &s->index);
 
+    if (version_id >= 2)
+        qemu_get_be32s(f, &s->driver_state);
+    else
+        s->driver_state = 0;
+
     return 0;
 }
 
-static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t index)
+static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t index,int devfn)
 {
     PCIHypercallState *d;
     HypercallState *s;
@@ -267,8 +295,13 @@ static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t i
 
     d = (PCIHypercallState *)pci_register_device(bus,
                                                  name, sizeof(PCIHypercallState),
-                                                 -1,
+                                                 devfn,
                                                  NULL, NULL);
+    if (!d) {
+        fprintf(stderr, "Failed to register PCI device for vmchannel\n");
+        return;
+    }
+
 
     pci_conf = d->dev.config;
     pci_conf[0x00] = 0x02; // Qumranet vendor ID 0x5002
@@ -281,7 +314,7 @@ static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t i
     pci_conf[0x0b] = 0x05; // BaseClass
 
     pci_conf[0x0e] = 0x00; // header_type
-    pci_conf[0x3d] = 1; // interrupt pin 0
+    pci_conf[0x3d] = 2; // interrupt pin 1
 
     pci_register_io_region(&d->dev, 0, HYPERCALL_IOPORT_SIZE,
                            PCI_ADDRESS_SPACE_IO, hp_map);
@@ -289,27 +322,38 @@ static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t i
     pHypercallStates[index] = s;
     s->index = index;
     s->irq = 16; /* PCI interrupt */
-    s->pci_dev = (PCIDevice *)d;
+    s->pci_dev = &d->dev;
 
     hp_reset(s);
-    register_savevm(name, index, 1, hc_save, hc_load, s);
+    qemu_register_reset(hp_reset, s);
+    register_savevm(name, index, 2, hc_save, hc_load, s);
 }
 
-void pci_hypercall_init(PCIBus *bus)
+int pci_hypercall_init(PCIBus *bus,int devfn)
 {
     int i;
 
     // loop devices & call pci_hypercall_single_init with device id's
     for(i = 0; i < MAX_VMCHANNEL_DEVICES; i++){
         if (vmchannel_hds[i].vmchannel_hd) {
-            pci_hypercall_single_init(bus, vmchannel_hds[i].deviceid, i);
+            pci_hypercall_single_init(bus, vmchannel_hds[i].deviceid, i,++devfn);
         }
     }
+
+	return devfn;
 }
 
+
+// If the VDR is set, data is waiting to be read by the guest.
+// don't let the vmchannel device write into
+// the buffer since the guest might be in the middle of a read
 static int vmchannel_can_read(void *opaque)
 {
-    return 128;
+    long index = (long)opaque;
+    if (pHypercallStates[index]->hsr & HSR_PENDING)
+        return 0;
+    else
+        return HP_MEM_SIZE;
 }
 
 static void vmchannel_event(void *opaque, int event)
@@ -324,7 +368,7 @@ static void vmchannel_event(void *opaque, int event)
     return;
 }
 
-// input from vmchannel outside caller
+// input from vmchannel device in order of inject it into the guest
 static void vmchannel_read(void *opaque, const uint8_t *buf, int size)
 {
     int i;
@@ -335,7 +379,8 @@ static void vmchannel_read(void *opaque, const uint8_t *buf, int size)
 #endif
 
     // if the hypercall device is in interrupts disabled state, don't accept the data
-    if (pHypercallStates[index]->hcr & HCR_DI) {
+    if (!(pHypercallStates[index]->hcr & HCR_IRQ_ON)) {
+        printf("%s: error: got read during interrupt disabled\n", __FUNCTION__);
         return;
     }
 
@@ -343,7 +388,7 @@ static void vmchannel_read(void *opaque, const uint8_t *buf, int size)
         pHypercallStates[index]->RxBuff[i] = buf[i];
     }
     pHypercallStates[index]->rxsize = size;
-    pHypercallStates[index]->hsr = HSR_VDR;
+    pHypercallStates[index]->hsr |= HSR_PENDING;
     hypercall_update_irq(pHypercallStates[index]);
 }
 

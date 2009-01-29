@@ -185,7 +185,7 @@ void device_hot_remove_success(int pcibus, int slot);
 /* vmchannel devices */
 
 #define MAX_VMCHANNEL_DEVICES 4
-void pci_hypercall_init(PCIBus *bus);
+int pci_hypercall_init(PCIBus *bus, int devfn);
 void vmchannel_init(CharDriverState *hd, uint32_t deviceid, uint32_t index);
 
 /* serial ports */
