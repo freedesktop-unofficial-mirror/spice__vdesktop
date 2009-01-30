@@ -6,12 +6,11 @@ CFLAGS=-Wall -O2 -g -fno-strict-aliasing
 LDFLAGS=
 
 ifeq ($(ARCH),i386)
-TESTS=linux-test testthread sha1-i386 test-i386
+TESTS=linux-test testthread test-i386
 endif
 ifeq ($(ARCH),x86_64)
 TESTS=test-x86_64
 endif
-TESTS+=sha1# test_path
 #TESTS+=test_path
 #TESTS+=runcom
 
@@ -61,17 +60,6 @@ test-mmap: test-mmap.c
 # generic Linux and CPU test
 linux-test: linux-test.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< -lm
-
-# speed test
-sha1-i386: sha1.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
-
-sha1: sha1.c
-	$(HOST_CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
-
-speed: sha1 sha1-i386
-	time ./sha1
-	time $(QEMU) ./sha1-i386
 
 # vm86 test
 runcom: runcom.c
