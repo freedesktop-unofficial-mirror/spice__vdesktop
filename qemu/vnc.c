@@ -34,7 +34,7 @@
 
 #include "vnc_keysym.h"
 #include "keymaps.c"
-#include "d3des.h"
+#include <gcrypt.h>
 
 #ifdef CONFIG_VNC_TLS
 #include <gnutls/gnutls.h>
@@ -177,6 +177,8 @@ struct VncState
     size_t read_handler_expect;
     /* input */
     uint8_t modifiers_state[256];
+
+    gcry_cipher_hd_t des_cipher;
 };
 
 static VncState *vnc_state; /* needed for info vnc */
@@ -1655,11 +1657,21 @@ static void make_challenge(VncState *vs)
         vs->challenge[i] = (int) (256.0*rand()/(RAND_MAX+1.0));
 }
 
+static unsigned char bitrev(unsigned char b)
+{
+	unsigned char r = b;
+	r = (r & 0xf0)>>4 | (r & 0x0f)<<4;
+	r = (r & 0xcc)>>2 | (r & 0x33)<<2;
+	r = (r & 0xaa)>>1 | (r & 0x55)<<1;
+	return r;
+}
+
 static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
 {
     unsigned char response[VNC_AUTH_CHALLENGE_SIZE];
     int i, j, pwlen;
-    unsigned char key[8];
+    char key[8];
+    gcry_error_t e;
 
     if (!vs->password || !vs->password[0]) {
 	VNC_DEBUG("No password configured on server");
@@ -1674,15 +1686,28 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
 	return 0;
     }
 
+    if (gcry_cipher_reset(vs->des_cipher)) {
+        VNC_DEBUG("f1\n");
+        goto fail;
+    }
+
     memcpy(response, vs->challenge, VNC_AUTH_CHALLENGE_SIZE);
 
     /* Calculate the expected challenge response */
     pwlen = strlen(vs->password);
     for (i=0; i<sizeof(key); i++)
-        key[i] = i<pwlen ? vs->password[i] : 0;
-    deskey(key, EN0);
-    for (j = 0; j < VNC_AUTH_CHALLENGE_SIZE; j += 8)
-        des(response+j, response+j);
+        key[i] = i<pwlen ? bitrev(vs->password[i]) : 0;
+
+    if (gcry_cipher_setkey(vs->des_cipher, key, sizeof(key))) {
+        VNC_DEBUG("f2\n");
+        goto fail;
+    }
+    for (j = 0; j < VNC_AUTH_CHALLENGE_SIZE; j += 8) {
+        if ( (e = gcry_cipher_encrypt(vs->des_cipher, response+j, 8, NULL, 0)) ) {
+            VNC_DEBUG("f3: %s\n", gcry_strerror(e));
+            goto fail;
+        }
+    }
 
     /* Compare expected vs actual challenge response */
     if (memcmp(response, data, VNC_AUTH_CHALLENGE_SIZE) != 0) {
@@ -1702,6 +1727,18 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
 
 	vnc_read_when(vs, protocol_client_init, 1);
     }
+    return 0;
+
+fail:
+    /* Should never happen, but just in case... */
+    vnc_write_u32(vs, 1); /* Reject auth */
+    if (vs->minor >= 8) {
+        static const char err[] = "Internal crypto library error";
+        vnc_write_u32(vs, sizeof(err));
+        vnc_write(vs, err, sizeof(err));
+    }
+    vnc_flush(vs);
+    vnc_client_error(vs);
     return 0;
 }
 
@@ -2310,6 +2347,16 @@ void vnc_display_init(DisplayState *ds)
     vs->as.nchannels = 2;
     vs->as.fmt = AUD_FMT_S16;
     vs->as.endianness = 0;
+
+    if (!gcry_check_version (GCRYPT_VERSION)) {
+        fprintf(stderr, "libgcrypt initialization error\n");
+        exit(1);
+    }
+
+    if (gcry_cipher_open(&vs->des_cipher, GCRY_CIPHER_DES, GCRY_CIPHER_MODE_ECB, 0)) {
+        fprintf(stderr, "libgcrypt DES cipher initialization error\n");
+        exit(1);
+    }
 }
 
 #ifdef CONFIG_VNC_TLS

@@ -145,7 +145,7 @@ endif
 ifdef CONFIG_CURSES
 OBJS+=curses.o
 endif
-OBJS+=vnc.o d3des.o
+OBJS+=vnc.o
 
 ifdef CONFIG_COCOA
 OBJS+=cocoa.o
@@ -173,7 +173,7 @@ cocoa.o: cocoa.m
 sdl.o: sdl.c keymaps.c sdl_keysym.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(SDL_CFLAGS) -c -o $@ $<
 
-vnc.o: vnc.c keymaps.c sdl_keysym.h vnchextile.h d3des.c d3des.h
+vnc.o: vnc.c keymaps.c sdl_keysym.h vnchextile.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(CONFIG_VNC_TLS_CFLAGS) -c -o $@ $<
 
 curses.o: curses.c keymaps.c curses_keys.h
