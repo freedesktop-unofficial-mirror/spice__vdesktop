@@ -155,6 +155,7 @@ fmod_lib=""
 fmod_inc=""
 oss_lib=""
 vnc_tls="yes"
+libgcrypt="yes"
 bsd="no"
 linux="no"
 solaris="no"
@@ -384,6 +385,8 @@ for opt do
   ;;
   --disable-vnc-tls) vnc_tls="no"
   ;;
+  --disable-gcrypt) libgcrypt="no"
+  ;;
   --disable-slirp) slirp="no"
   ;;
   --disable-vde) vde="no"
@@ -543,6 +546,7 @@ echo "                           Available cards: $audio_possible_cards"
 echo "  --enable-mixemu          enable mixer emulation"
 echo "  --disable-brlapi         disable BrlAPI"
 echo "  --disable-vnc-tls        disable TLS encryption for VNC server"
+echo "  --disable-gcrypt         disable libgcrypt usage"
 echo "  --disable-curses         disable curses output"
 echo "  --disable-bluez          disable bluez stack connectivity"
 echo "  --disable-kvm            disable KVM acceleration support"
@@ -863,6 +867,37 @@ EOF
 fi
 
 ##########################################
+# libgcrypt detection
+if test "$libgcrypt" = "yes" ; then
+cat > $TMPC <<EOF
+#include <gcrypt.h>
+int main(void) {
+  gcry_cipher_hd_t ci;
+  gcry_error_t e = gcry_cipher_open(&ci, GCRY_CIPHER_DES, GCRY_CIPHER_MODE_ECB, 0);
+  return 0;
+}
+EOF
+    libgcrypt_cflags=`libgcrypt-config --cflags 2> /dev/null`
+    libgcrypt_libs=`libgcrypt-config --libs 2> /dev/null`
+    if $cc $ARCH_CFLAGS -o $TMPE ${OS_CFLAGS} $libgcrypt_cflags $TMPC \
+           $libgcrypt_libs > /dev/null 2> /dev/null ; then
+	:
+    else
+	libgcrypt="no"
+    fi
+fi
+
+
+if [ "$libgcrypt" != "yes" ];then
+    echo
+    echo "qemu currently requires libgcrypt to compile"
+    echo "Make sure you have libgcrypt headers and libraries available"
+    echo
+    exit 1
+fi
+
+
+##########################################
 # vde libraries probe
 if test "$vde" = "yes" ; then
   cat > $TMPC << EOF
@@ -1180,6 +1215,11 @@ if test "$vnc_tls" = "yes" ; then
     echo "    TLS CFLAGS    $vnc_tls_cflags"
     echo "    TLS LIBS      $vnc_tls_libs"
 fi
+echo "libgcrypt support $libgcrypt"
+if test "$libgcrypt" = "yes" ; then
+    echo "   gcrypt CFLAGS  $libgcrypt_cflags"
+    echo "   gcrypt LIBS    $libgcrypt_libs"
+fi
 if test -n "$sparc_cpu"; then
     echo "Target Sparc Arch $sparc_cpu"
 fi
@@ -1423,6 +1463,12 @@ if test "$vnc_tls" = "yes" ; then
   echo "CONFIG_VNC_TLS_CFLAGS=$vnc_tls_cflags" >> $config_mak
   echo "CONFIG_VNC_TLS_LIBS=$vnc_tls_libs" >> $config_mak
   echo "#define CONFIG_VNC_TLS 1" >> $config_h
+fi
+if test "$libgcrypt" = "yes" ; then
+  echo "CONFIG_GCRYPT=yes" >> $config_mak
+  echo "CONFIG_GCRYPT_CFLAGS=$libgcrypt_cflags" >> $config_mak
+  echo "CONFIG_GCRYPT_LIBS=$libgcrypt_libs" >> $config_mak
+  echo "#define CONFIG_GCRYPT 1" >> $config_h
 fi
 qemu_version=`head $source_path/VERSION`
 echo "VERSION=$qemu_version" >>$config_mak

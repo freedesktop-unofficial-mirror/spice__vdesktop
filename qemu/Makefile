@@ -159,6 +159,12 @@ tcp_subr.o tcp_timer.o udp.o bootp.o debug.o tftp.o
 OBJS+=$(addprefix slirp/, $(SLIRP_OBJS))
 endif
 
+ifdef CONFIG_GCRYPT
+CFLAGS += $(CONFIG_GCRYPT_CFLAGS)
+LIBS += $(CONFIG_GCRYPT_LIBS)
+endif
+
+
 LIBS+=$(VDE_LIBS)
 
 cocoa.o: cocoa.m
