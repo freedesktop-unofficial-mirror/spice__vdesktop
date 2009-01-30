@@ -71,8 +71,8 @@ typedef struct BDRVQcowState {
     uint64_t cluster_cache_offset;
     uint32_t crypt_method; /* current crypt method, 0 if no key yet */
     uint32_t crypt_method_header;
-    AES_KEY aes_encrypt_key;
-    AES_KEY aes_decrypt_key;
+    AES_CBC_CIPHER aes_encrypt_cipher;
+    AES_CBC_CIPHER aes_decrypt_cipher;
 } BDRVQcowState;
 
 static int decompress_cluster(BDRVQcowState *s, uint64_t cluster_offset);
@@ -161,6 +161,14 @@ static int qcow_open(BlockDriverState *bs, const char *filename, int flags)
             goto fail;
         bs->backing_file[len] = '\0';
     }
+
+    if (header.crypt_method == QCOW_CRYPT_AES) {
+        if (AES_CBC_init(&s->aes_encrypt_cipher))
+            goto fail;
+        if (AES_CBC_init(&s->aes_decrypt_cipher))
+            goto fail;
+    }
+
     return 0;
 
  fail:
@@ -189,9 +197,9 @@ static int qcow_set_key(BlockDriverState *bs, const char *key)
     }
     s->crypt_method = s->crypt_method_header;
 
-    if (AES_set_encrypt_key(keybuf, 128, &s->aes_encrypt_key) != 0)
+    if (AES_CBC_set_key(keybuf, 128, &s->aes_encrypt_cipher) != 0)
         return -1;
-    if (AES_set_decrypt_key(keybuf, 128, &s->aes_decrypt_key) != 0)
+    if (AES_CBC_set_key(keybuf, 128, &s->aes_decrypt_cipher) != 0)
         return -1;
 #if 0
     /* test */
@@ -220,7 +228,7 @@ static int qcow_set_key(BlockDriverState *bs, const char *key)
 static void encrypt_sectors(BDRVQcowState *s, int64_t sector_num,
                             uint8_t *out_buf, const uint8_t *in_buf,
                             int nb_sectors, int enc,
-                            const AES_KEY *key)
+                            const AES_CBC_CIPHER *key)
 {
     union {
         uint64_t ll[2];
@@ -231,8 +239,8 @@ static void encrypt_sectors(BDRVQcowState *s, int64_t sector_num,
     for(i = 0; i < nb_sectors; i++) {
         ivec.ll[0] = cpu_to_le64(sector_num);
         ivec.ll[1] = 0;
-        AES_cbc_encrypt(in_buf, out_buf, 512, key,
-                        ivec.b, enc);
+        AES_CBC_encrypt(in_buf, out_buf, 512, key,
+                        ivec.b, 16, enc);
         sector_num++;
         in_buf += 512;
         out_buf += 512;
@@ -356,7 +364,7 @@ static uint64_t get_cluster_offset(BlockDriverState *bs,
                             encrypt_sectors(s, start_sect + i,
                                             s->cluster_data,
                                             s->cluster_data + 512, 1, 1,
-                                            &s->aes_encrypt_key);
+                                            &s->aes_encrypt_cipher);
                             if (bdrv_pwrite(s->hd, cluster_offset + i * 512,
                                             s->cluster_data, 512) != 512)
                                 return -1;
@@ -506,7 +514,7 @@ static int qcow_write(BlockDriverState *bs, int64_t sector_num,
             return -1;
         if (s->crypt_method) {
             encrypt_sectors(s, sector_num, s->cluster_data, buf, n, 1,
-                            &s->aes_encrypt_key);
+                            &s->aes_encrypt_cipher);
             ret = bdrv_pwrite(s->hd, cluster_offset + index_in_cluster * 512,
                               s->cluster_data, n * 512);
         } else {
@@ -558,7 +566,7 @@ static void qcow_aio_read_cb(void *opaque, int ret)
         if (s->crypt_method) {
             encrypt_sectors(s, acb->sector_num, acb->buf, acb->buf,
                             acb->n, 0,
-                            &s->aes_decrypt_key);
+                            &s->aes_decrypt_cipher);
         }
     }
 
@@ -682,7 +690,7 @@ static void qcow_aio_write_cb(void *opaque, int ret)
             }
         }
         encrypt_sectors(s, acb->sector_num, acb->cluster_data, acb->buf,
-                        acb->n, 1, &s->aes_encrypt_key);
+                        acb->n, 1, &s->aes_encrypt_cipher);
         src_buf = acb->cluster_data;
     } else {
         src_buf = acb->buf;
@@ -728,6 +736,8 @@ static void qcow_aio_cancel(BlockDriverAIOCB *blockacb)
 static void qcow_close(BlockDriverState *bs)
 {
     BDRVQcowState *s = bs->opaque;
+    AES_CBC_deinit(&s->aes_encrypt_cipher);
+    AES_CBC_deinit(&s->aes_decrypt_cipher);
     qemu_free(s->l1_table);
     qemu_free(s->l2_cache);
     qemu_free(s->cluster_cache);
