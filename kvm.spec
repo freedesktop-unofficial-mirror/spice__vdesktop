@@ -132,6 +132,7 @@ fi
 %files
 /usr/bin/kvm
 /usr/bin/kvm_stat
+/usr/bin/ksmctl
 %{confdir}/qemu-ifup
 %{initdir}/kvm  
 /etc/udev/rules.d/*kvm*.rules
