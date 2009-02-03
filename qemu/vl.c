@@ -2664,7 +2664,7 @@ int drive_init(struct drive_opt *arg, int snapshot,
         bdrv_flags |= BDRV_O_CACHE_WB;
     else if (cache == 3) /* not specified */
         bdrv_flags |= BDRV_O_CACHE_DEF;
-    if (bdrv_open2(bdrv, file, bdrv_flags, drv) < 0 || qemu_key_check(bdrv, file)) {
+    if (bdrv_open2(bdrv, file, bdrv_flags, drv) < 0) {
         fprintf(stderr, "qemu: could not open disk image %s\n",
                         file);
         return -1;
