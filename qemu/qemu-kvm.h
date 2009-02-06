@@ -126,6 +126,7 @@ int kvm_uncoalesce_mmio_region(target_phys_addr_t start, ram_addr_t size);
 
 #ifdef USE_KVM_DEVICE_ASSIGNMENT
 void kvm_ioperm(CPUState *env, void *data);
+void kvm_remove_ioperm_data(unsigned long start_port, unsigned long num);
 void kvm_arch_do_ioperm(void *_data);
 #endif
 
