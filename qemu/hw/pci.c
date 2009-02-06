@@ -51,7 +51,7 @@ struct PCIBus {
 
 static void pci_update_mappings(PCIDevice *d);
 static void pci_set_irq(void *opaque, int irq_num, int level);
-void assigned_dev_update_irq(PCIDevice *d);
+void assigned_dev_update_irqs(void);
 
 target_phys_addr_t pci_mem_base;
 static uint16_t pci_default_sub_vendor_id = PCI_SUBVENDOR_ID_REDHAT_QUMRANET;
@@ -484,7 +484,7 @@ void pci_default_write_config(PCIDevice *d,
     if (kvm_enabled() && qemu_kvm_irqchip_in_kernel() &&
         address >= PIIX_CONFIG_IRQ_ROUTE &&
 	address < PIIX_CONFIG_IRQ_ROUTE + 4)
-        assigned_dev_update_irq(d);
+        assigned_dev_update_irqs();
 #endif /* USE_KVM_DEVICE_ASSIGNMENT */
 
     end = address + len;
