@@ -145,6 +145,8 @@ typedef struct PCIVDIPortDevice {
     uint32_t ram_size;
     VDIPortRam *ram;
     uint32_t connected;
+    int running;
+    int new_gen_on_resume;
 #ifdef CONFIG_SPICE
     int active_interface;
     VDIPortInterface interface;
@@ -659,7 +661,7 @@ static void qxl_reset(PCIQXLDevice *d)
     }
 }
 
-static void vdi_port_mew_gen(PCIVDIPortDevice *d)
+static void vdi_port_new_gen(PCIVDIPortDevice *d)
 {
     d->ram->generation = (d->ram->generation + 1 == 0) ? 1 : d->ram->generation + 1;
 }
@@ -672,6 +674,11 @@ static int vdi_port_irq_level(PCIVDIPortDevice *d)
 static void vdi_port_notify_guest(PCIVDIPortDevice *d)
 {
     uint32_t events = VDI_PORT_INTERRUPT;
+
+    if (!d->connected) {
+        return;
+    }
+
     mb();
     if ((d->ram->int_pending & events) == events) {
         return;
@@ -701,7 +708,11 @@ static void vdi_port_interface_unplug(VDIPortInterface *port, VDObjectRef plug)
     }
     d->plug = NULL;
     d->plug_read_pos = 0;
-    vdi_port_mew_gen(d);
+    if (!d->running) {
+        d->new_gen_on_resume = TRUE;
+        return;
+    }
+    vdi_port_new_gen(d);
     vdi_port_notify_guest(d);
 }
 
@@ -712,6 +723,11 @@ static int vdi_port_interface_write(VDIPortInterface *port, VDObjectRef plug,
     VDIPortRing *ring = &d->ram->output;
     int do_notify = FALSE;
     int actual_write = 0;
+
+    if (!d->running) {
+        return 0;
+    }
+
     while (len) {
         VDIPortPacket *packet;
         int notify;
@@ -746,7 +762,11 @@ static int vdi_port_interface_read(VDIPortInterface *port, VDObjectRef plug,
     uint32_t gen = d->ram->generation;
     int do_notify = FALSE;
     int actual_read = 0;
-    
+
+    if (!d->running) {
+        return 0;
+    }
+
     while (!RING_IS_EMPTY(ring) &&  RING_CONS_ITEM(ring)->gen != gen) {
         int notify;
 
@@ -831,7 +851,7 @@ static uint32_t vdi_port_dev_connect(PCIVDIPortDevice *d)
         printf("%s: already connected\n", __FUNCTION__);
         return 0;
     }
-    vdi_port_mew_gen(d);
+    vdi_port_new_gen(d);
     d->connected = TRUE;
 #ifdef CONFIG_SPICE
     vdi_port_register_interface(d);
@@ -853,10 +873,6 @@ static void vdi_port_dev_disconnect(PCIVDIPortDevice *d)
 
 static void vdi_port_dev_notify(PCIVDIPortDevice *d)
 {
-    if (!d->connected) {
-        printf("%s: not connected\n", __FUNCTION__);
-        return;
-    }
 #ifdef CONFIG_SPICE
     if (!d->plug) {
         return;
@@ -1665,6 +1681,10 @@ static void vdi_port_write_dword(void *opaque, uint32_t addr, uint32_t val)
 #endif
     switch (io_port) {
     case VDI_PORT_IO_NOTIFY:
+        if (!d->connected) {
+             printf("%s: not connected\n", __FUNCTION__);
+            return;
+        }
         vdi_port_dev_notify(d);
         break;
     case VDI_PORT_IO_UPDATE_IRQ:
@@ -1726,7 +1746,7 @@ static void vdi_port_reset(PCIVDIPortDevice *d)
     d->ram->generation = 0;
     d->ram->int_pending = 0;
     d->ram->int_mask = 0;
-    d->connected = 0;
+    d->connected = FALSE;
 #ifdef CONFIG_SPICE
     d->plug_read_pos = 0;
 #endif
@@ -1775,7 +1795,16 @@ static void vdi_port_vm_change_state_handler(void *opaque, int running)
     PCIVDIPortDevice* d=(PCIVDIPortDevice*)opaque;
 
     if (running) {
-        qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));   
+        d->running = TRUE;
+        if (d->new_gen_on_resume) {
+            d->new_gen_on_resume = FALSE;
+            vdi_port_new_gen(d);
+            vdi_port_notify_guest(d);
+        }
+        qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));
+        vdi_port_dev_notify(d);
+    } else {
+        d->running = FALSE;
     }
 }
 
@@ -1805,6 +1834,9 @@ static void vdi_port_init(PCIBus *bus, uint8_t *ram, unsigned long ram_offset,
     d->ram_offset = ram_offset;
     vdi_port_reset(d);
     d->ram_size = ram_size;
+    d->new_gen_on_resume = FALSE;
+    d->running = FALSE;
+    
 
     pci_register_io_region(&d->pci_dev, VDI_PORT_IO_RANGE_INDEX,
                            msb_mask(VDI_PORT_IO_RANGE_SIZE * 2 - 1),
