@@ -2286,6 +2286,7 @@ static void vnc_connect(VncState *vs)
     memset(vs->dirty_row, 0xFF, sizeof(vs->dirty_row));
     vs->has_resize = 0;
     vs->has_hextile = 0;
+    vs->has_WMVi = 0;
     vs->ds->dpy_copy = NULL;
     vnc_update_client(vs);
     reset_keys(vs);
