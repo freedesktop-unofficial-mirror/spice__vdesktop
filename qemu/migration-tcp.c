@@ -403,10 +403,41 @@ MigrationState *tcp_start_outgoing_migration(const char *host_port,
     return &s->mig_state;
 }
 
+static int read_all(int fd, void *in_nuf, int in_len)
+{
+    uint8_t *buf = in_nuf;
+    int len = in_len;
+
+    while (len > 0) {
+        int ret;
+
+        ret = read(fd, buf, len);
+        if (ret < 0) {
+            if (errno != EINTR)
+                return -1;
+        } else if (ret == 0) {
+            break;
+        } else {
+            buf += ret;
+            len -= ret;
+        }
+    }
+    return in_len - len;
+}
+
+static uint32_t read_be32(int fd)
+{
+    uint32_t ret;
+    if (read_all(fd, &ret, sizeof(uint32_t)) != sizeof(uint32_t)) {
+        ret = 0;
+    }
+    return ntohl(ret);
+}
+
 static int tcp_recive_header(void)
 {
-    uint32_t magic = qemu_get_be32(in_state.file);
-    uint32_t version = qemu_get_be32(in_state.file);
+    uint32_t magic = read_be32(in_state.fd);
+    uint32_t version = read_be32(in_state.fd);
     return magic == MIGRATION_MAGIC && version == MIGRATION_VERSION;
 }
 
@@ -459,7 +490,7 @@ error:
 
 static void tcp_incomming_run_hook(void)
 {
-    uint32_t len = qemu_get_be32(in_state.file);
+    uint32_t len = read_be32(in_state.fd);
     migration_notify_record_t* notifier;
     char *hook_key = NULL;
 
@@ -473,7 +504,7 @@ static void tcp_incomming_run_hook(void)
         tcp_incoming_load_vm();
         return;
     }
-    if (!(hook_key = malloc(len)) || qemu_get_buffer(in_state.file, (uint8_t *)hook_key, len) != len) {
+    if (!(hook_key = malloc(len)) || read_all(in_state.fd, (uint8_t *)hook_key, len) != len) {
         fprintf(stderr, "recive hook key failed\n");
         goto error;
     }
@@ -485,7 +516,6 @@ static void tcp_incomming_run_hook(void)
     }
     free(hook_key);
 
-    //using both fd and QEMUFile is a potential bug.
     notifier->migration_recv(notifier->opaque, in_state.fd);
     return;
 
