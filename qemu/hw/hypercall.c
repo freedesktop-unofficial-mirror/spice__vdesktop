@@ -304,8 +304,8 @@ static void pci_hypercall_single_init(PCIBus *bus, uint32_t deviceid, uint32_t i
 
 
     pci_conf = d->dev.config;
-    pci_conf[0x00] = 0x02; // Qumranet vendor ID 0x5002
-    pci_conf[0x01] = 0x50;
+    pci_conf[0x00] = 0xF4; // Red Hat vendor ID 0x1AF4
+    pci_conf[0x01] = 0x1A;
     pci_conf[0x02] = deviceid & 0x00ff;
     pci_conf[0x03] = (deviceid & 0xff00) >> 8;
 
