@@ -742,6 +742,15 @@ static inline void cpumask_clear_cpu(int cpu, cpumask_var_t mask)
 /* compound_head() was introduced in 2.6.22 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+#  define NEED_COMPOUND_HEAD 1
+#  ifdef RHEL_RELEASE_CODE
+#    if RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(5,2)
+#      undef NEED_COMPOUND_HEAD
+#    endif
+#  endif
+#endif
+
+#ifdef NEED_COMPOUND_HEAD
 
 static inline struct page *compound_head(struct page *page)
 {
