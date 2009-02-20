@@ -11,6 +11,9 @@
 /* PCI bus */
 extern target_phys_addr_t pci_mem_base;
 
+#define PCI_BASE_CLASS_STORAGE           0x01
+#define PCI_BASE_CLASS_NETWORK           0x02
+
 /* see pci-ids.txt */
 #define PCI_VENDOR_ID_REDHAT_QUMRANET    0x1af4
 #define PCI_SUBVENDOR_ID_REDHAT_QUMRANET 0x1af4

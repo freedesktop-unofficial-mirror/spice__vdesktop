@@ -721,7 +721,7 @@ static void pciej_write(void *opaque, uint32_t addr, uint32_t val)
 {
     int slot = ffs(val) - 1;
 
-    device_hot_remove_success(0, slot);
+    pci_device_hot_remove_success(0, slot);
 
 #if defined(DEBUG)
     printf("pciej write %x <== %d\n", addr, val);

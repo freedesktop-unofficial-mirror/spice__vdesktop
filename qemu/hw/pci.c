@@ -831,7 +831,7 @@ PCIDevice *pci_nic_init(PCIBus *bus, NICInfo *nd, int devfn,
         if (strcmp(nd->model, pci_nic_models[i]) == 0) {
             pci_dev = pci_nic_init_fns[i](bus, nd, devfn);
             if (pci_dev) {
-                nd->devfn = pci_dev->devfn;
+                nd->private = pci_dev;
             }
             return pci_dev;
         }

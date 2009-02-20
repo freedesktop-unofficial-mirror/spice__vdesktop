@@ -1605,13 +1605,18 @@ static term_cmd_t term_cmds[] = {
     { "set_link", "ss", do_set_link, "name [up|down]" },
     { "cpu_set", "is", do_cpu_set_nr, "cpu [online|offline]", "change cpu state" },
 #if defined(TARGET_I386) || defined(TARGET_X86_64)
-    { "drive_add", "iss", drive_hot_add, "pcibus pcidevfn [file=file][,if=type][,bus=n]\n"
+    { "drive_add", "ss", drive_hot_add, "pci_addr=[[<domain>:]<bus>:]<slot>\n"
+                                         "[file=file][,if=type][,bus=n]\n"
                                         "[,unit=m][,media=d][index=i]\n"
                                         "[,cyls=c,heads=h,secs=s[,trans=t]]\n"
                                         "[snapshot=on|off][,cache=on|off]",
                                         "add drive to PCI storage controller" },
-    { "pci_add", "iss", device_hot_add, "bus nic|storage|host [[vlan=n][,macaddr=addr][,model=type]] [file=file][,if=type][,bus=nr]... [host=02:00.0[,name=string][,dma=none]", "hot-add PCI device" },
-    { "pci_del", "ii", device_hot_remove, "bus slot-number", "hot remove PCI device" },
+    { "pci_add", "sss", pci_device_hot_add, "pci_addr=auto|[[<domain>:]<bus>:]<slot> nic|storage|host [[vlan=n][,macaddr=addr][,model=type]] [file=file][,if=type][,bus=nr]... [host=02:00.0[,name=string][,dma=none]", "hot-add PCI device" },
+    { "pci_del", "s", pci_device_hot_remove, "pci_addr=[[<domain>:]<bus>:]<slot>", "hot remove PCI device" },
+    { "host_net_add", "ss", net_host_device_add,
+      "[tap,user,socket,vde] options", "add host VLAN client" },
+    { "host_net_remove", "is", net_host_device_remove,
+      "vlan_id name", "remove host VLAN client" },
 #endif
 #ifdef CONFIG_QXL
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
