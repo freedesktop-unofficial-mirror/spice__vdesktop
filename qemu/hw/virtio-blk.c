@@ -13,6 +13,7 @@
 
 #include <qemu-common.h>
 #include <sysemu.h>
+#include <console.h>
 #include "virtio-blk.h"
 #include "block_int.h"
 
@@ -65,6 +66,8 @@ static int virtio_blk_handle_write_error(VirtIOBlockReq *req, int error)
         req->next = s->rq;
         s->rq = req;
         vm_stop(0);
+        term_printf_async(VMSTOP_ASYNC_EVENT,
+                "VM is stopped due to disk write error: %s\n", strerror(error));
     } else {
         virtio_blk_req_complete(req, VIRTIO_BLK_S_IOERR);
     }

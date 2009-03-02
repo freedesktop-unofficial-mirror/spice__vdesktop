@@ -257,6 +257,8 @@ static void do_notify_async_events(char *event_str, char *enable)
         event = MIGRATION_ASYNC_EVENT;
     else if (!strcmp(event_str, "reboot"))
         event = REBOOT_ASYNC_EVENT;
+    else if (!strcmp(event_str, "vmstop"))
+        event = VMSTOP_ASYNC_EVENT;
     else
         return;
 
@@ -1615,7 +1617,7 @@ static term_cmd_t term_cmds[] = {
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
     { "notify", "ss", do_notify_async_events,
-      "vnc|rtc|migration|reboot|shutdown on|off", "enable / disable printing of notifications for the specified event" },
+      "vnc|rtc|migration|reboot|shutdown|vmstop on|off", "enable / disable printing of notifications for the specified event" },
     { NULL, NULL, },
 };
 

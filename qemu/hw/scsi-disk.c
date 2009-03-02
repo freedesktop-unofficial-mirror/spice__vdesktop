@@ -15,6 +15,7 @@
 
 #include <qemu-common.h>
 #include <sysemu.h>
+#include <console.h>
 //#define DEBUG_SCSI
 
 #ifdef DEBUG_SCSI
@@ -228,6 +229,8 @@ static int scsi_handle_write_error(SCSIRequest *r, int error)
             || action == BLOCK_ERR_STOP_ANY) {
         r->status |= SCSI_REQ_STATUS_RETRY;
         vm_stop(0);
+        term_printf_async(VMSTOP_ASYNC_EVENT,
+                "VM is stopped due to disk write error: %s\n", strerror(error));
     } else {
         scsi_command_complete(r, STATUS_CHECK_CONDITION,
                 SENSE_HARDWARE_ERROR);
