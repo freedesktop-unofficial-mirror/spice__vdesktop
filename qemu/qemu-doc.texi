@@ -879,6 +879,9 @@ Use @var{cmdline} as kernel command line
 @item -initrd @var{file}
 Use @var{file} as initial ram disk.
 
+@item -acpitable [sig=@var{str}][,rev=@var{n}][,oem_id=@var{str}][,oem_table_id=@var{str}][,oem_rev=@var{n}] [,asl_compiler_id=@var{str}][,asl_compiler_rev=@var{n}][,data=@var{file1}[:@var{file2}]...]
+Add ACPI table with specified header fields and context from specified files.
+
 @end table
 
 Debug/Expert options:

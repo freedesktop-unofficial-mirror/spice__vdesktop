@@ -4199,6 +4199,8 @@ static void help(int exitcode)
 #ifdef TARGET_I386
            "-no-acpi        disable ACPI\n"
            "-no-hpet        disable HPET\n"
+           "-acpitable [sig=str][,rev=n][,oem_id=str][,oem_table_id=str][,oem_rev=n][,asl_compiler_id=str][,asl_compiler_rev=n][,data=file1[:file2]...]\n"
+           "                ACPI table description\n"
 #endif
 #ifdef CONFIG_CURSES
            "-curses         use a curses/ncurses interface instead of SDL\n"
@@ -4326,6 +4328,7 @@ enum {
     QEMU_OPTION_vnc,
     QEMU_OPTION_no_acpi,
     QEMU_OPTION_no_hpet,
+    QEMU_OPTION_acpitable,
     QEMU_OPTION_curses,
     QEMU_OPTION_no_kvm,
     QEMU_OPTION_no_kvm_irqchip,
@@ -4476,6 +4479,7 @@ static const QEMUOption qemu_options[] = {
     { "usb", 0, QEMU_OPTION_usb },
     { "no-acpi", 0, QEMU_OPTION_no_acpi },
     { "no-hpet", 0, QEMU_OPTION_no_hpet },
+    { "acpitable", HAS_ARG, QEMU_OPTION_acpitable },
     { "no-reboot", 0, QEMU_OPTION_no_reboot },
     { "no-shutdown", 0, QEMU_OPTION_no_shutdown },
     { "show-cursor", 0, QEMU_OPTION_show_cursor },
@@ -5470,6 +5474,12 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_rtc_td_hack:
                 rtc_td_hack = 1;
+                break;
+            case QEMU_OPTION_acpitable:
+                if(acpi_table_add(optarg) < 0) {
+                    fprintf(stderr, "Wrong acpi table provided\n");
+                    exit(1);
+                }
                 break;
 #endif
 #ifdef USE_KQEMU
