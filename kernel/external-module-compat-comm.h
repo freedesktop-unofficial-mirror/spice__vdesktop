@@ -738,3 +738,16 @@ static inline void cpumask_clear_cpu(int cpu, cpumask_var_t mask)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
 #define marker_synchronize_unregister() synchronize_sched()
 #endif
+
+/* compound_head() was introduced in 2.6.22 */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+
+static inline struct page *compound_head(struct page *page)
+{
+	if (PageCompound(page))
+		page = (struct page *)page_private(page);
+	return page;
+}
+
+#endif
