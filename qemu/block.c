@@ -307,6 +307,14 @@ static BlockDriver *find_protocol(const char *filename)
         is_windows_drive_prefix(filename))
         return &bdrv_raw;
 #endif
+
+    /* Protocol name will never start with a slash.
+     * This allows the user to specify absolute filenames
+     * containing a ":" character.
+     */
+    if (*filename == '/')
+        return &bdrv_raw;
+
     p = strchr(filename, ':');
     if (!p)
         return &bdrv_raw;
