@@ -1863,8 +1863,10 @@ void vga_reset(void *opaque)
 
     s->lfb_addr = 0;
     s->lfb_end = 0;
-    s->map_addr = 0;
-    s->map_end = 0;
+    if (!s->isa) {
+        s->map_addr = 0;
+        s->map_end = 0;
+    }
     s->lfb_vram_mapped = 0;
     s->bios_offset = 0;
     s->bios_size = 0;
@@ -2595,6 +2597,7 @@ int isa_vga_init(DisplayState *ds, uint8_t *vga_ram_base,
 
     s->console = graphic_console_init(s->ds, s->update, s->invalidate,
                                       s->screen_dump, s->text_update, s);
+    s->isa = 1; 
 
 #ifdef CONFIG_BOCHS_VBE
     /* XXX: use optimized standard vga accesses */
