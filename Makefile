@@ -82,7 +82,7 @@ install-rpm:
 	cp scripts/qemu-ifup $(DESTDIR)/$(confdir)/qemu-ifup
 	install -t $(DESTDIR)/etc/udev/rules.d scripts/*kvm*.rules
 
-install:
+install: bios vgabios
 	$(kcmd)make -C kernel DESTDIR="$(DESTDIR)" install
 	make -C libkvm DESTDIR="$(DESTDIR)" install
 	make -C qemu DESTDIR="$(DESTDIR)" install
