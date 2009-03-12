@@ -194,7 +194,7 @@ extern uint8_t _translate_keycode(const int key);
 #define MIGRATION_ASYNC_EVENT 4
 #define REBOOT_ASYNC_EVENT 5
 #define VMSTOP_ASYNC_EVENT 6
-#define MAX_ASYNC_EVENTS  VMSTOP_ASYNC_EVENT
+#define MAX_ASYNC_EVENT  VMSTOP_ASYNC_EVENT
 
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */

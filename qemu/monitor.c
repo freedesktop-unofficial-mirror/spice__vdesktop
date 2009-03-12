@@ -75,7 +75,7 @@ struct term_cmd_t {
     term_cmd_t* next; 
 };
 
-int async_printable_events[MAX_ASYNC_EVENTS];
+int async_printable_events[MAX_ASYNC_EVENT+1];
 
 #define MAX_MON 4
 static CharDriverState *monitor_hd[MAX_MON];
@@ -140,7 +140,7 @@ void term_printf_async(const int event, const char *fmt, ...)
     va_list ap;
     va_start(ap, fmt);
 
-    if (event > MAX_ASYNC_EVENTS)
+    if (event > MAX_ASYNC_EVENT)
         goto cleanup;
     if (!async_printable_events[event])
         goto cleanup;
