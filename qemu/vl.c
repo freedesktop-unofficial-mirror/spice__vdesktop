@@ -3231,8 +3231,14 @@ static int ram_save_block(QEMUFile *f)
     int found = 0;
 
     while (addr < phys_ram_size) {
-        if (kvm_enabled() && current_addr == 0)
-            kvm_update_dirty_pages_log(); /* FIXME: propagate errors */
+        if (kvm_enabled() && current_addr == 0) {
+            int r;
+            if ((r = kvm_update_dirty_pages_log())) {
+                printf("%s: update dirty pages log failed %d\n", __FUNCTION__, r);
+                qemu_file_set_has_error(f); // for now: replacing FIXME with ugly hack
+                return 0;
+            }
+        }
         if (cpu_physical_memory_get_dirty(current_addr, MIGRATION_DIRTY_FLAG)) {
             uint8_t ch;
 
@@ -3303,10 +3309,15 @@ static int ram_save_live(QEMUFile *f, int stage, void *opaque)
     /* try transferring iterative blocks of memory */
 
     if (stage == 3) {
-        cpu_physical_memory_set_dirty_tracking(0);
-
+        int r;
+        if ((r = kvm_update_dirty_pages_log())) {
+            printf("%s: update dirty pages log failed %d\n", __FUNCTION__, r);
+            qemu_file_set_has_error(f);
+            return 0;
+        }
         /* flush all remaining blocks regardless of rate limiting */
         while (ram_save_block(f) != 0);
+        cpu_physical_memory_set_dirty_tracking(0);
     }
 
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);

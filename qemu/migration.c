@@ -219,6 +219,11 @@ void migrate_fd_put_ready(void *opaque)
 
         bdrv_flush_all();
         qemu_savevm_state_complete(s->file);
+        if (qemu_file_has_error(s->file)) {
+            vm_start();
+            s->done(s, MIG_STATE_ERROR);
+            return;
+        }
         s->done(s, MIG_STATE_COMPLETED);
     }
 }
