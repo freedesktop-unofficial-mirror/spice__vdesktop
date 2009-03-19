@@ -1207,6 +1207,27 @@ int kvm_get_dirty_bitmap_cb(unsigned long start, unsigned long len,
     return kvm_get_dirty_pages_log_range(start, bitmap, start, len);
 }
 
+static int find_phys_area(ram_addr_t phys_ram_offset, ram_addr_t *offset, target_phys_addr_t *start,
+                              ram_addr_t *size)
+{
+    struct mapping *now = NULL;
+    struct mapping *map;
+
+    for (map = mappings; map < mappings + nr_mappings; ++map) {
+        if (map->ram >= phys_ram_offset && (!now || map->ram < now->ram)) {
+            now = map;
+        }
+    }
+
+    if (!now) {
+        return -1;
+    }
+
+    *offset = now->ram - phys_ram_offset;
+    *start = now->phys;
+    *size = now->len;
+    return 0;
+}
 /* 
  * get kvm's dirty pages bitmap and update qemu's
  * we only care about physical ram, which resides in slots 0 and 3
@@ -1214,12 +1235,44 @@ int kvm_get_dirty_bitmap_cb(unsigned long start, unsigned long len,
 int kvm_update_dirty_pages_log(void)
 {
     int r = 0;
+    ram_addr_t now = 0;
+    ram_addr_t end = phys_ram_size;
+    ram_addr_t offset;
+    target_phys_addr_t area_start;
+    ram_addr_t area_size;
+    unsigned char *dirty_bitmap = kvm_dirty_bitmap;
 
+    if (!dirty_bitmap) {
+        printf("%s: no dirty bitmap\n", __FUNCTION__);
+        return -1;
+    }
 
-    r = kvm_get_dirty_pages_range(kvm_context, 0, phys_ram_size,
-                                  kvm_dirty_bitmap, NULL,
-                                  kvm_get_dirty_bitmap_cb);
-    return r;
+    while (now < end && !find_phys_area(now, &offset, &area_start, &area_size)) {
+        if ((offset & ~TARGET_PAGE_MASK) || (area_start & ~TARGET_PAGE_MASK) || 
+                                                         (area_size & ~TARGET_PAGE_MASK)) {
+            printf("%s: invalid mem area\n", __FUNCTION__);
+            return -1;
+        }
+
+        if ((now += offset) >= end) {
+            break;
+        }
+        
+        if (area_size > end - now) {
+            return -1;
+        }
+        dirty_bitmap += offset / TARGET_PAGE_SIZE / 8;
+        if ((r = kvm_get_dirty_pages_range(kvm_context, area_start, area_size, dirty_bitmap, NULL,
+                                      kvm_get_dirty_bitmap_cb))) {
+            return r;
+        }
+        dirty_bitmap += area_size / TARGET_PAGE_SIZE / 8;
+        now += area_size;
+        if (!now) {
+            break;
+        }
+    }
+    return 0;
 }
 
 void kvm_qemu_log_memory(target_phys_addr_t start, target_phys_addr_t size,
