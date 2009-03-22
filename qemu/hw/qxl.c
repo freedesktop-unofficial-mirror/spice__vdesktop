@@ -661,9 +661,21 @@ static void qxl_reset(PCIQXLDevice *d)
     }
 }
 
+static inline void vdi_port_set_dirty(PCIVDIPortDevice *d, void *start, uint32_t length)
+{
+    ram_addr_t addr =  (ram_addr_t)start - (ram_addr_t)d->ram + d->ram_offset;
+    ram_addr_t end =  ALIGN(addr + length, TARGET_PAGE_SIZE);
+
+    do {
+        cpu_physical_memory_set_dirty(addr);
+        addr += TARGET_PAGE_SIZE;
+    } while ( addr < end );
+}
+
 static void vdi_port_new_gen(PCIVDIPortDevice *d)
 {
     d->ram->generation = (d->ram->generation + 1 == 0) ? 1 : d->ram->generation + 1;
+    vdi_port_set_dirty(d, &d->ram->generation, sizeof(d->ram->generation));
 }
 
 static int vdi_port_irq_level(PCIVDIPortDevice *d)
@@ -685,6 +697,7 @@ static void vdi_port_notify_guest(PCIVDIPortDevice *d)
     }
     atomic_or(&d->ram->int_pending, events);
     qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));
+    vdi_port_set_dirty(d, &d->ram->int_pending, sizeof(d->ram->int_pending));
 }
 
 #ifdef CONFIG_SPICE
@@ -737,16 +750,20 @@ static int vdi_port_interface_write(VDIPortInterface *port, VDObjectRef plug,
         if (wait) {
             break;
         }
+
         packet = RING_PROD_ITEM(ring);
         packet->gen = d->ram->generation;
         packet->size = MIN(len, sizeof(packet->data));
         memcpy(packet->data, buf, packet->size);
+        vdi_port_set_dirty(d, packet, sizeof(*packet) - (sizeof(packet->data) - packet->size));
+
         RING_PUSH(ring, notify);
         do_notify = do_notify || notify;   
         len -= packet->size;
         buf += packet->size;
         actual_write += packet->size;
     }
+    vdi_port_set_dirty(d, ring, sizeof(*ring) - sizeof(ring->items));
 
     if (do_notify) {
         vdi_port_notify_guest(d);
@@ -786,6 +803,7 @@ static int vdi_port_interface_read(VDIPortInterface *port, VDObjectRef plug,
 
         packet = RING_CONS_ITEM(ring);
         if (packet->size > sizeof(packet->data)) {
+            vdi_port_set_dirty(d, ring, sizeof(*ring) - sizeof(ring->items));
             printf("%s: bad packet size\n", __FUNCTION__);
             return 0;
         }
@@ -802,6 +820,7 @@ static int vdi_port_interface_read(VDIPortInterface *port, VDObjectRef plug,
             do_notify = do_notify || notify;
         }
     }
+    vdi_port_set_dirty(d, ring, sizeof(*ring) - sizeof(ring->items));
 
     if (do_notify) {
         vdi_port_notify_guest(d);
@@ -1262,6 +1281,7 @@ int qxl_vga_touch(void)
     return ret;
 }
 
+//todo: use cpu_physical_memory_set_dirty instead of manual copy
 static void qxl_save(QEMUFile* f, void* opaque)
 {
     PCIQXLDevice* d=(PCIQXLDevice*)opaque;
@@ -1734,7 +1754,7 @@ static void vdi_port_ram_map(PCIDevice *pci_dev, int region_num,
     ASSERT((addr & (size - 1)) == 0);
     ASSERT(size ==  d->ram_size);
 
-    cpu_register_physical_memory(addr, size, d->ram_offset | IO_MEM_ROM);
+    cpu_register_physical_memory(addr, size, d->ram_offset | IO_MEM_RAM);
 }
 
 static void vdi_port_reset(PCIVDIPortDevice *d)
@@ -1750,6 +1770,7 @@ static void vdi_port_reset(PCIVDIPortDevice *d)
 #ifdef CONFIG_SPICE
     d->plug_read_pos = 0;
 #endif
+     vdi_port_set_dirty(d, d->ram, sizeof(*d->ram));
 }
 
 static void vdi_port_reset_handler(void *opaque)

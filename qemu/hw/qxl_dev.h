@@ -172,7 +172,7 @@ typedef struct ATTR_PACKED QXLCursorCmd {
         } trail;
         Point16 position;
     } u;
-    UINT8 device_data[QXL_CURSUR_DEVICE_DATA_SIZE]; //todo: dynamic size from rom
+    UINT8 device_data[QXL_CURSUR_DEVICE_DATA_SIZE]; //todo: use host memory
 } QXLCursorCmd;
 
 enum {

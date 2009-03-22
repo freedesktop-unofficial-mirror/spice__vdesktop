@@ -307,14 +307,12 @@ static int line_out_ctl(HWVoiceOut *hw, int cmd, ...)
 
     switch (cmd) {
     case VOICE_ENABLE:
-        dprintf("VOICE_ENABLE");
         voice_out->prev_ticks = get_monotonic_time();
         if (driver.play_plug) {
             driver.play_plug->start(driver.play_plug);
         }
         break;
     case VOICE_DISABLE:
-        dprintf("VOICE_DISABLE");
         if (driver.play_plug) {
             if (driver.play_frame) {
                 uint32_t *frame = driver.play_frame;
@@ -436,13 +434,11 @@ static int line_in_ctl(HWVoiceIn *hw, int cmd, ...)
     switch (cmd) {
     case VOICE_ENABLE:
         voice_in->prev_ticks = get_monotonic_time();
-        dprintf("VOICE_ENABLE");
         if (driver.record_plug) {
             driver.record_plug->start(driver.record_plug);
         }
         break;
     case VOICE_DISABLE:
-        dprintf("VOICE_DISABLE");
         if (driver.record_plug) {
             driver.record_plug->stop(driver.record_plug);
         }
