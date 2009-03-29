@@ -885,7 +885,8 @@ static int ide_handle_write_error(IDEState *s, int error, int op)
         s->bmdma->status |= op;
         vm_stop(0);
         term_printf_async(VMSTOP_ASYNC_EVENT,
-                "VM is stopped due to disk write error: %s\n", strerror(error));
+                "VM is stopped due to disk write error: %s: %s\n",
+		bdrv_get_device_name(s->bs), strerror(error));
     } else {
         if (op == BM_STATUS_DMA_RETRY)
             ide_dma_error(s);
