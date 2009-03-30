@@ -2378,6 +2378,15 @@ retry:
 
     if (s->highest_alloc < s->free_cluster_index) {
         s->highest_alloc = s->free_cluster_index;
+        if (bs->high_watermark) {
+            uint64_t ha = (s->highest_alloc << s->cluster_bits);
+            if (ha >= bs->high_watermark) {
+                term_printf("high watermark reached for %s alloc=%" PRIu64
+                            " mark=%" PRIu64 "\n",
+                            bs->device_name, ha, bs->high_watermark);
+                bs->high_watermark = 0;
+            }
+        }
     }
 
     return (s->free_cluster_index - nb_clusters) << s->cluster_bits;

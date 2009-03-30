@@ -104,6 +104,8 @@ int qemu_key_check(BlockDriverState *bs, const char *name);
 void bdrv_flush(BlockDriverState *bs);
 void bdrv_flush_all(void);
 
+void bdrv_set_high_watermark(BlockDriverState *bs, uint64_t offset);
+
 int bdrv_is_allocated(BlockDriverState *bs, int64_t sector_num, int nb_sectors,
 	int *pnum);
 

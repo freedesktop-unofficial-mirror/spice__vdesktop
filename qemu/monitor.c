@@ -595,6 +595,24 @@ static void do_gdbserver(const char *port)
 }
 #endif
 
+void do_block_set_watermark(char *device, int megs)
+{
+    uint64_t offset = ((uint64_t)megs) << 20;
+    BlockDriverState *bs;
+
+    bs = bdrv_find(device);
+    if (!bs) {
+        term_printf("device not found\n");
+        return;
+    }
+
+    if (megs < 0)
+        term_printf("ileggal offset\n");
+    else
+        bdrv_set_high_watermark(bs, offset);
+}
+
+
 static void term_printc(int c)
 {
     term_printf("'");
@@ -1623,6 +1641,9 @@ static term_cmd_t term_cmds[] = {
 #endif
     { "notify", "ss", do_notify_async_events,
       "vnc|rtc|migration|reboot|shutdown|vmstop on|off", "enable / disable printing of notifications for the specified event" },
+    { "block_set_watermark", "Bi", do_block_set_watermark,
+      "block-device offset(in MB)",
+      "set watermark, get notification when reached"},
     { NULL, NULL, },
 };
 

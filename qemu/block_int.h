@@ -123,6 +123,9 @@ struct BlockDriverState {
 
     void *sync_aiocb;
 
+    /* high watermark -- notify if it was reached */
+    uint64_t high_watermark;
+
     /* I/O stats (display with "info blockstats"). */
     uint64_t rd_bytes;
     uint64_t wr_bytes;

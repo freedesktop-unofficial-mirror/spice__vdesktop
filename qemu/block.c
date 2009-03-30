@@ -1116,6 +1116,13 @@ void bdrv_flush_all(void)
             bdrv_flush(bs);
 }
 
+
+void bdrv_set_high_watermark(BlockDriverState *bs, uint64_t offset)
+{
+    bs->high_watermark = offset;
+}
+
+
 /*
  * Returns true iff the specified sector is present in the disk image. Drivers
  * not implementing the functionality are assumed to not support backing files,
