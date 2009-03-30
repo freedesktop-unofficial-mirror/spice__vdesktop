@@ -153,6 +153,9 @@ typedef struct BDRVQcowState {
     uint32_t crypt_method_header;
     AES_CBC_CIPHER aes_encrypt_cipher;
     AES_CBC_CIPHER aes_decrypt_cipher;
+
+    int64_t highest_alloc; /* highest cluester allocated (in clusters) */
+
     uint64_t snapshots_offset;
     int snapshots_size;
     int nb_snapshots;
@@ -368,6 +371,8 @@ static int qcow_open(BlockDriverState *bs, const char *filename, int flags)
         ext_end = s->cluster_size;
     if (qcow_read_extensions(bs, sizeof(header), ext_end))
         goto fail;
+
+    s->highest_alloc = 0;
 
     /* read the backing file name */
     if (header.backing_file_offset != 0) {
@@ -2370,6 +2375,11 @@ retry:
             size,
             (s->free_cluster_index - nb_clusters) << s->cluster_bits);
 #endif
+
+    if (s->highest_alloc < s->free_cluster_index) {
+        s->highest_alloc = s->free_cluster_index;
+    }
+
     return (s->free_cluster_index - nb_clusters) << s->cluster_bits;
 }
 
