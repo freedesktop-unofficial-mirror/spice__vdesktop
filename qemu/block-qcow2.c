@@ -143,9 +143,6 @@ typedef struct BDRVQcowState {
     uint32_t crypt_method_header;
     AES_CBC_CIPHER aes_encrypt_cipher;
     AES_CBC_CIPHER aes_decrypt_cipher;
-
-    int64_t highest_alloc; /* highest cluester allocated (in clusters) */
-
     uint64_t snapshots_offset;
     int snapshots_size;
     int nb_snapshots;
@@ -173,8 +170,6 @@ static void free_clusters(BlockDriverState *bs,
 #ifdef DEBUG_ALLOC
 static void check_refcounts(BlockDriverState *bs);
 #endif
-static void scan_refcount(BlockDriverState *bs, int64_t *high);
-
 
 static int qcow_probe(const uint8_t *buf, int buf_size, const char *filename)
 {
@@ -282,8 +277,6 @@ static int qcow_open(BlockDriverState *bs, const char *filename, int flags)
 
     if (refcount_init(bs) < 0)
         goto fail;
-
-    scan_refcount(bs, &s->highest_alloc);
 
     /* read the backing file name */
     if (header.backing_file_offset != 0) {
@@ -2216,29 +2209,6 @@ static int load_refcount_block(BlockDriverState *bs,
     return 0;
 }
 
-static void scan_refcount(BlockDriverState *bs, int64_t *high)
-{
-    BDRVQcowState *s = bs->opaque;
-    int64_t refcnt_index, cluster_index, cluster_end, h = 0;
-
-    for (refcnt_index=0; refcnt_index < s->refcount_table_size; refcnt_index++){
-        if (s->refcount_table[refcnt_index] == 0) {
-            continue;
-        }
-        cluster_index = refcnt_index << (s->cluster_bits - REFCOUNT_SHIFT);
-        cluster_end = (refcnt_index + 1) << (s->cluster_bits - REFCOUNT_SHIFT);
-        for ( ; cluster_index < cluster_end; cluster_index++) {
-            if (get_refcount(bs, cluster_index) == 0)
-                /* do nothing -- reserved for free counting */;
-            else
-                h = cluster_index;
-        }
-    }
-
-    if (high)
-        *high = (h+1);
-}
-
 static int get_refcount(BlockDriverState *bs, int64_t cluster_index)
 {
     BDRVQcowState *s = bs->opaque;
@@ -2279,10 +2249,6 @@ retry:
             size,
             (s->free_cluster_index - nb_clusters) << s->cluster_bits);
 #endif
-
-    if (s->highest_alloc < s->free_cluster_index)
-        s->highest_alloc = s->free_cluster_index;
-
     return (s->free_cluster_index - nb_clusters) << s->cluster_bits;
 }
 
