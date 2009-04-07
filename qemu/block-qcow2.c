@@ -26,6 +26,7 @@
 #include <zlib.h>
 #include "aes.h"
 #include <assert.h>
+#include "console.h"
 
 /*
   Differences with QCOW:
@@ -2381,9 +2382,10 @@ retry:
         if (bs->high_watermark) {
             uint64_t ha = (s->highest_alloc << s->cluster_bits);
             if (ha >= bs->high_watermark) {
-                term_printf("high watermark reached for %s alloc=%" PRIu64
-                            " mark=%" PRIu64 "\n",
-                            bs->device_name, ha, bs->high_watermark);
+                term_printf_async(WATERMARK_ASYNC_EVENT,
+                                  "high watermark reached for %s alloc=%"
+                                  PRIu64 " mark=%" PRIu64 "\n",
+                                  bs->device_name, ha, bs->high_watermark);
                 bs->high_watermark = 0;
             }
         }

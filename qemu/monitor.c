@@ -259,6 +259,8 @@ static void do_notify_async_events(char *event_str, char *enable)
         event = REBOOT_ASYNC_EVENT;
     else if (!strcmp(event_str, "vmstop"))
         event = VMSTOP_ASYNC_EVENT;
+    else if (!strcmp(event_str, "watermark"))
+        event = WATERMARK_ASYNC_EVENT;
     else
         return;
 
@@ -607,7 +609,7 @@ void do_block_set_watermark(char *device, int megs)
     }
 
     if (megs < 0)
-        term_printf("ileggal offset\n");
+        term_printf("illegal offset\n");
     else
         bdrv_set_high_watermark(bs, offset);
 }
@@ -1640,10 +1642,11 @@ static term_cmd_t term_cmds[] = {
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
     { "notify", "ss", do_notify_async_events,
-      "vnc|rtc|migration|reboot|shutdown|vmstop on|off", "enable / disable printing of notifications for the specified event" },
+      "vnc|rtc|migration|reboot|shutdown|vmstop|watermark on|off",
+      "enable / disable printing of notifications for the specified event" },
     { "block_set_watermark", "Bi", do_block_set_watermark,
       "block-device offset(in MB)",
-      "set watermark, get notification when reached"},
+      "set watermark, get notification when reached (set 0 to disable)"},
     { NULL, NULL, },
 };
 
