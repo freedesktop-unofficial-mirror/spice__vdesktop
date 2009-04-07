@@ -30,6 +30,10 @@ void term_printf(const char *fmt, ...)
 {
 }
 
+void term_printf_async(const int event, const char *fmt, ...)
+{
+}
+
 void term_print_filename(const char *filename)
 {
 }
