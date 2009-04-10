@@ -3,9 +3,6 @@
 
 #include "qemu-aio.h"
 
-/* block.c */
-typedef struct BlockDriver BlockDriver;
-
 extern BlockDriver bdrv_raw;
 extern BlockDriver bdrv_host_device;
 extern BlockDriver bdrv_cow;

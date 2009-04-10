@@ -158,6 +158,7 @@ typedef struct NICInfo NICInfo;
 typedef struct HCIInfo HCIInfo;
 typedef struct AudioState AudioState;
 typedef struct BlockDriverState BlockDriverState;
+typedef struct BlockDriver BlockDriver;
 typedef struct DisplayState DisplayState;
 typedef struct TextConsole TextConsole;
 typedef TextConsole QEMUConsole;
