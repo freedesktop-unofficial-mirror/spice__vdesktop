@@ -217,6 +217,7 @@ void migrate_fd_put_ready(void *opaque)
         dprintf("done iterating\n");
         vm_stop(0);
 
+        qemu_aio_flush();
         bdrv_flush_all();
         qemu_savevm_state_complete(s->file);
         if (qemu_file_has_error(s->file)) {
