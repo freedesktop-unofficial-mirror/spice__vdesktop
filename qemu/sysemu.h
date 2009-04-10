@@ -146,6 +146,10 @@ typedef struct DriveInfo {
     char serial[21];
     int used;
     int drive_opt_idx;
+    int opened;
+    int bdrv_flags;
+    char *file;
+    BlockDriver *drv;
 } DriveInfo;
 
 #define MAX_IDE_DEVS	2
@@ -177,6 +181,8 @@ struct QEMUMachine;
 extern int drive_add(const char *file, const char *fmt, ...);
 extern int drive_init(struct drive_opt *arg, int snapshot,
                       struct QEMUMachine *machine);
+extern int drive_open(DriveInfo drive);
+extern int drives_reopen(void);
 
 /* acpi */
 void qemu_system_cpu_hot_add(int cpu, int state);

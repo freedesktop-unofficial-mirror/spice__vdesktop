@@ -482,6 +482,10 @@ static void tcp_incoming_load_vm(void)
     close(in_state.listener);
     in_state.listener = -1;
     term_printf_async(MIGRATION_ASYNC_EVENT, "migration: migration process finished\n");
+    if (drives_reopen() != 0) {
+	    fprintf(stderr, "reopening of drives failed\n");
+	    goto error;
+    }
     vm_start();
 
 error:

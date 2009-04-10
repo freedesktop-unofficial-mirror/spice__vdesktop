@@ -2699,13 +2699,45 @@ int drive_init(struct drive_opt *arg, int snapshot,
         bdrv_flags |= BDRV_O_CACHE_WB;
     else if (cache == 3) /* not specified */
         bdrv_flags |= BDRV_O_CACHE_DEF;
-    if (bdrv_open2(bdrv, file, bdrv_flags, drv) < 0) {
-        fprintf(stderr, "qemu: could not open disk image %s\n",
-                        file);
-        return -1;
-    }
+
+    drives_table[drives_table_idx].drv = drv;
+    drives_table[drives_table_idx].bdrv_flags = bdrv_flags;
+    drives_table[drives_table_idx].file = strdup(file);
+    drives_table[drives_table_idx].opened = 1;
+    if (drive_open(drives_table[drives_table_idx]) != 0)
+	    return -1;
     return drives_table_idx;
 }
+
+int drive_open(DriveInfo drive)
+{
+    if (bdrv_open2(drive.bdrv, drive.file, drive.bdrv_flags, drive.drv) < 0) {
+        fprintf(stderr, "qemu: could not open disk image %s\n",
+                        drive.file);
+        return -1;
+    }
+    return 0;
+}
+
+int drives_reopen(void)
+{
+    int i;
+
+    for (i=0; i < nb_drives; i++)
+        if (drives_table[i].used && drives_table[i].opened) {
+            int res;
+
+            bdrv_close(drives_table[i].bdrv);
+            res = drive_open(drives_table[i]);
+            if (res) {
+		    fprintf(stderr, "qemu: re-open of %s failed wth error %d\n",
+			    drives_table[i].file, res);
+		    return res;
+	    }
+        }
+     return 0;
+ }
+
 
 /***********************************************************/
 /* USB devices */
@@ -6033,7 +6065,7 @@ int main(int argc, char **argv, char **envp)
      */
     for(i = 0; i < nb_drives_opt; i++)
         if (drive_init(&drives_opt[i], snapshot, machine) == -1)
-	    exit(1);
+           exit(1);
 
     register_savevm("timer", 0, 2, timer_save, timer_load, NULL);
     register_savevm_live("ram", 0, 3, ram_save_live, NULL, ram_load, NULL);
