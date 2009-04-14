@@ -501,30 +501,31 @@ static int try_to_merge_one_page(struct mm_struct *mm,
 	unsigned long page_addr_in_vma;
 	pte_t orig_pte, *orig_ptep;
 
+	if (!PageAnon(oldpage))
+		goto out;
+
 	get_page(newpage);
 	get_page(oldpage);
 
-	down_read(&mm->mmap_sem);
-
 	page_addr_in_vma = addr_in_vma(vma, oldpage);
 	if (page_addr_in_vma == -EFAULT)
-		goto out_unlock;
+		goto out_putpage;
 
 	orig_ptep = get_pte(mm, page_addr_in_vma);
 	if (!orig_ptep)
-		goto out_unlock;
+		goto out_putpage;
 	orig_pte = *orig_ptep;
 	pte_unmap(orig_ptep);
 	if (!pte_present(orig_pte))
-		goto out_unlock;
+		goto out_putpage;
 	if (page_to_pfn(oldpage) != pte_pfn(orig_pte))
-		goto out_unlock;
+		goto out_putpage;
 	/*
 	 * we need the page lock to read a stable PageSwapCache in
 	 * page_wrprotect()
 	 */
 	if (TestSetPageLocked(oldpage))
-		goto out_unlock;
+		goto out_putpage;
 	/*
 	 * page_wrprotect check if the page is swapped or in swap cache,
 	 * in the future we might want to run here if_present_pte and then
@@ -532,111 +533,134 @@ static int try_to_merge_one_page(struct mm_struct *mm,
 	 */
 	if (!page_wrprotect(oldpage, &odirect_sync, 2)) {
 		unlock_page(oldpage);
-		goto out_unlock;
+		goto out_putpage;
 	}
 	unlock_page(oldpage);
 	if (!odirect_sync)
-		goto out_unlock;
+		goto out_putpage;
 
 	orig_pte = pte_wrprotect(orig_pte);
 
 	if (pages_identical(oldpage, newpage))
 		ret = replace_page(vma, oldpage, newpage, orig_pte, newprot);
 
-out_unlock:
-	up_read(&mm->mmap_sem);
+out_putpage:
 	put_page(oldpage);
 	put_page(newpage);
+out:
 	return ret;
 }
 
 /*
- * try_to_merge_two_pages - take two identical pages and prepare them to be
- * merged into one page.
+ * try_to_merge_two_pages_alloc - take two identical pages and prepare them
+ * to be merged into one page.
  *
  * this function return 0 if we successfully mapped two identical pages into one
  * page, 1 otherwise.
- * (note in case we created KsmPage and mapped one page into it but the second
- *  page was not mapped we consider it as a failure and return 1)
+ * (note this function will allocate a new kernel page, if one of the pages
+ * is already shared page (KsmPage), then try_to_merge_two_pages_noalloc()
+ * should be called.)
  */
-static int try_to_merge_two_pages(struct mm_struct *mm1, struct page *page1,
-				  struct mm_struct *mm2, struct page *page2,
-				  unsigned long addr1, unsigned long addr2)
+
+static int try_to_merge_two_pages_alloc(struct mm_struct *mm1,
+					struct page *page1,
+					struct mm_struct *mm2,
+					struct page *page2,
+					unsigned long addr1,
+					unsigned long addr2)
+{
+	struct vm_area_struct *vma;
+	pgprot_t prot;
+	int ret = 1;
+	struct page *kpage;
+
+
+	kpage = alloc_page(GFP_HIGHUSER);
+	if (!kpage)
+		return ret;
+	down_read(&mm1->mmap_sem);
+	vma = find_vma(mm1, addr1);
+	if (!vma) {
+		put_page(kpage);
+		up_read(&mm1->mmap_sem);
+		return ret;
+	}
+	prot = vma->vm_page_prot;
+	pgprot_val(prot) &= ~_PAGE_RW;
+
+	copy_user_highpage(kpage, page1, addr1);
+	ret = try_to_merge_one_page(mm1, vma, page1, kpage, prot);
+	up_read(&mm1->mmap_sem);
+
+	if (!ret) {
+		down_read(&mm2->mmap_sem);
+		vma = find_vma(mm2, addr2);
+		if (!vma) {
+			put_page(kpage);
+			ret = 1;
+			up_read(&mm2->mmap_sem);
+			return ret;
+		}
+
+		prot = vma->vm_page_prot;
+		pgprot_val(prot) &= ~_PAGE_RW;
+
+		ret = try_to_merge_one_page(mm2, vma, page2, kpage,
+					    prot);
+		up_read(&mm2->mmap_sem);
+		/*
+		 * If the secoend try_to_merge_one_page call was failed,
+		 * we are in situation where we have Ksm page that have
+		 * just one pte pointing to it, in this case we break
+		 * it.
+		 */
+		if (ret) {
+			struct page *tmppage[1];
+			down_read(&mm1->mmap_sem);
+			if (get_user_pages(current, mm1, addr1, 1, 1, 0,
+					   tmppage, NULL)) {
+				put_page(tmppage[0]);
+			}
+			up_read(&mm1->mmap_sem);
+		}
+	}
+
+	put_page(kpage);
+	return ret;
+}
+
+/*
+ * try_to_merge_two_pages_noalloc - the same astry_to_merge_two_pages_alloc,
+ * but no new kernel page is allocated (page2 should be KsmPage)
+ */
+static int try_to_merge_two_pages_noalloc(struct mm_struct *mm1,
+					  struct page *page1,
+					  struct page *page2,
+					  unsigned long addr1)
 {
 	struct vm_area_struct *vma;
 	pgprot_t prot;
 	int ret = 1;
 
 	/*
-	 * If page2 isn't shared (it isn't PageKsm) we have to allocate a new
-	 * file mapped page and make the two ptes of mm1(page1) and mm2(page2)
-	 * point to it.  If page2 is shared, we can just make the pte of
-	 * mm1(page1) point to page2
+	 * If page2 is shared, we can just make the pte of mm1(page1) point to
+	 * page2.
 	 */
-	if (PageKsm(page2)) {
-		down_read(&mm1->mmap_sem);
-		vma = find_vma(mm1, addr1);
+	BUG_ON(!PageKsm(page2));
+	down_read(&mm1->mmap_sem);
+	vma = find_vma(mm1, addr1);
+	if (!vma) {
 		up_read(&mm1->mmap_sem);
-		if (!vma)
-			return ret;
-		prot = vma->vm_page_prot;
-		pgprot_val(prot) &= ~_PAGE_RW;
-		ret = try_to_merge_one_page(mm1, vma, page1, page2, prot);
-	} else {
-		struct page *kpage;
-
-		kpage = alloc_page(GFP_HIGHUSER);
-		if (!kpage)
-			return ret;
-		down_read(&mm1->mmap_sem);
-		vma = find_vma(mm1, addr1);
-		up_read(&mm1->mmap_sem);
-		if (!vma) {
-			put_page(kpage);
-			return ret;
-		}
-		prot = vma->vm_page_prot;
-		pgprot_val(prot) &= ~_PAGE_RW;
-
-		copy_user_highpage(kpage, page1, addr1);
-		ret = try_to_merge_one_page(mm1, vma, page1, kpage, prot);
-
-		if (!ret) {
-			down_read(&mm2->mmap_sem);
-			vma = find_vma(mm2, addr2);
-			up_read(&mm2->mmap_sem);
-			if (!vma) {
-				put_page(kpage);
-				ret = 1;
-				return ret;
-			}
-
-			prot = vma->vm_page_prot;
-			pgprot_val(prot) &= ~_PAGE_RW;
-
-			ret = try_to_merge_one_page(mm2, vma, page2, kpage,
-						    prot);
-			/*
-			 * If the secoend try_to_merge_one_page call was failed,
-			 * we are in situation where we have Ksm page that have
-			 * just one pte pointing to it, in this case we break
-			 * it.
-			 */
-			if (ret) {
-				struct page *tmppage[1];
-
-				down_read(&mm1->mmap_sem);
-				if (get_user_pages(current, mm1, addr1, 1, 1,
-						    0, tmppage, NULL)) {
-					put_page(tmppage[0]);
-				}
-				up_read(&mm1->mmap_sem);
-			}
-		}
-		put_page(kpage);
+		return ret;
 	}
+	prot = vma->vm_page_prot;
+	pgprot_val(prot) &= ~_PAGE_RW;
+	ret = try_to_merge_one_page(mm1, vma, page1, page2, prot);
+	up_read(&mm1->mmap_sem);
+
 	return ret;
 }
+
 
 static int is_zapped_item(struct rmap_item *rmap_item,
 			  struct page **page)
@@ -926,9 +950,8 @@ static int cmp_and_merge_page(struct ksm_scan *ksm_scan, struct page *page)
 		int ret;
 
 		BUG_ON(!tree_rmap_item->tree_item);
-		ret = try_to_merge_two_pages(slot->mm, page, tree_rmap_item->mm,
-					     page2[0], addr,
-					     tree_rmap_item->address);
+		ret = try_to_merge_two_pages_noalloc(slot->mm, page, page2[0],
+						     addr);
 		put_page(page2[0]);
 		if (!ret) {
 			if (!rmap_item)
@@ -958,9 +981,10 @@ static int cmp_and_merge_page(struct ksm_scan *ksm_scan, struct page *page)
 
 		rmap_item = tree_item->rmap_item;
 		BUG_ON(!rmap_item);
-		ret = try_to_merge_two_pages(slot->mm, page, rmap_item->mm,
-					     page2[0], addr,
-					     rmap_item->address);
+		ret = try_to_merge_two_pages_alloc(slot->mm, page,
+						   rmap_item->mm,
+						   page2[0], addr,
+						   rmap_item->address);
 		if (!ret) {
 			rb_erase(&tree_item->node, &root_unstable_tree);
 			stable_tree_insert(page2[0], tree_item, rmap_item);
