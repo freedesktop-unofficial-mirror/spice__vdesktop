@@ -642,12 +642,18 @@ static int is_zapped_item(struct rmap_item *rmap_item,
 			  struct page **page)
 {
 	int ret = 0;
+	struct vm_area_struct *vma;
 
 	cond_resched();
 	if (is_present_pte(rmap_item->mm, rmap_item->address)) {
 		down_read(&rmap_item->mm->mmap_sem);
-		ret = get_user_pages(current, rmap_item->mm, rmap_item->address,
-				     1, 0, 0, page, NULL);
+		vma = find_vma(rmap_item->mm, rmap_item->address);
+		if (vma && !vma->vm_file) {
+			BUG_ON(vma->vm_flags & VM_SHARED);
+			ret = get_user_pages(current, rmap_item->mm,
+					     rmap_item->address,
+					     1, 0, 0, page, NULL);
+		}
 		up_read(&rmap_item->mm->mmap_sem);
 	}
 
