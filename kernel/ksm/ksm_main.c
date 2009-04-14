@@ -879,22 +879,30 @@ static struct tree_item *unstable_tree_search_insert(struct page *page,
  */
 int update_tree(struct rmap_item *rmap_item, int *wait)
 {
-	struct page *page[1];
-
 	if (!rmap_item->stable_tree) {
+		/*
+		 * If the rmap_item is !stable_tree and in addition
+		 * it have tree_item != NULL, it mean this rmap_item
+		 * was inside the unstable tree, therefore we have to free
+		 * the tree_item from it (beacuse the unstable tree was already
+		 * flushed by the time we are here).
+		 */
 		if (rmap_item->tree_item) {
-			remove_rmap_item_from_tree(rmap_item);
-			return 1;
+			free_tree_item(rmap_item->tree_item);
+			rmap_item->tree_item = NULL;
+			return 0;
 		}
 		return 0;
 	}
-	if (is_zapped_item(rmap_item, page)) {
-		remove_rmap_item_from_tree(rmap_item);
-		*wait = 1;
-		return 1;
-	}
-	put_page(page[0]);
-	return 0;
+
+	/* If we are here it mean the rmap_item was zapped, beacuse the
+	 * rmap_item was pointing into the stable_tree and there all the pages
+	 * should be KsmPages, so it shouldnt have came to here in the first
+	 * place. (cmp_and_merge_page() shouldnt have been called)
+	 */
+	remove_rmap_item_from_tree(rmap_item);
+	*wait = 1;
+	return 1;
 }
 
 static struct rmap_item *create_new_rmap_item(struct mm_struct *mm,
