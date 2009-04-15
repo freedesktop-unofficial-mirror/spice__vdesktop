@@ -618,7 +618,7 @@ static int try_to_merge_two_pages_alloc(struct mm_struct *mm1,
 			struct page *tmppage[1];
 			down_read(&mm1->mmap_sem);
 			if (get_user_pages(current, mm1, addr1, 1, 1, 0,
-					   tmppage, NULL)) {
+					   tmppage, NULL) == 1) {
 				put_page(tmppage[0]);
 			}
 			up_read(&mm1->mmap_sem);
@@ -681,7 +681,7 @@ static int is_zapped_item(struct rmap_item *rmap_item,
 		up_read(&rmap_item->mm->mmap_sem);
 	}
 
-	if (!ret)
+	if (ret != 1)
 		return 1;
 
 	if (unlikely(!PageKsm(page[0]))) {
@@ -834,7 +834,7 @@ static struct tree_item *unstable_tree_search_insert(struct page *page,
 		ret = get_user_pages(current, rmap_item->mm, rmap_item->address,
 				     1, 0, 0, page2, NULL);
 		up_read(&rmap_item->mm->mmap_sem);
-		if (!ret)
+		if (ret != 1)
 			return NULL;
 
 		ret = memcmp_pages(page, page2[0]);
