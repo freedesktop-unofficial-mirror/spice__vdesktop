@@ -986,16 +986,22 @@ static int cmp_and_merge_page(struct ksm_scan *ksm_scan, struct page *page)
 	tree_item = unstable_tree_search_insert(page, page2, rmap_item);
 	if (tree_item) {
 		int ret;
+		struct rmap_item *tmp_rmap_item;
 
-		rmap_item = tree_item->rmap_item;
-		BUG_ON(!rmap_item);
+		tmp_rmap_item = tree_item->rmap_item;
+		BUG_ON(!tmp_rmap_item);
 		ret = try_to_merge_two_pages_alloc(slot->mm, page,
-						   rmap_item->mm,
+						   tmp_rmap_item->mm,
 						   page2[0], addr,
-						   rmap_item->address);
+						   tmp_rmap_item->address);
 		if (!ret) {
 			rb_erase(&tree_item->node, &root_unstable_tree);
-			stable_tree_insert(page2[0], tree_item, rmap_item);
+			if (!stable_tree_insert(page2[0],
+						tree_item, tmp_rmap_item)) {
+				if (rmap_item) {
+					rmap_item->stable_tree = 1;
+				}
+			}
 		}
 		put_page(page2[0]);
 		return !ret;
