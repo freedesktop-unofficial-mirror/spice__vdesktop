@@ -669,8 +669,8 @@ static int is_zapped_item(struct rmap_item *rmap_item,
 	struct vm_area_struct *vma;
 
 	cond_resched();
+	down_read(&rmap_item->mm->mmap_sem);
 	if (is_present_pte(rmap_item->mm, rmap_item->address)) {
-		down_read(&rmap_item->mm->mmap_sem);
 		vma = find_vma(rmap_item->mm, rmap_item->address);
 		if (vma && !vma->vm_file) {
 			BUG_ON(vma->vm_flags & VM_SHARED);
@@ -678,8 +678,8 @@ static int is_zapped_item(struct rmap_item *rmap_item,
 					     rmap_item->address,
 					     1, 0, 0, page, NULL);
 		}
-		up_read(&rmap_item->mm->mmap_sem);
 	}
+	up_read(&rmap_item->mm->mmap_sem);
 
 	if (ret != 1)
 		return 1;
@@ -824,13 +824,15 @@ static struct tree_item *unstable_tree_search_insert(struct page *page,
 		rmap_item = tree_item->rmap_item;
 		BUG_ON(!rmap_item);
 
+		down_read(&rmap_item->mm->mmap_sem);
 		/*
 		 * We dont want to swap in pages
 		 */
-		if (!is_present_pte(rmap_item->mm, rmap_item->address))
+		if (!is_present_pte(rmap_item->mm, rmap_item->address)) {
+			up_read(&rmap_item->mm->mmap_sem);
 			return NULL;
+		}
 
-		down_read(&rmap_item->mm->mmap_sem);
 		ret = get_user_pages(current, rmap_item->mm, rmap_item->address,
 				     1, 0, 0, page2, NULL);
 		up_read(&rmap_item->mm->mmap_sem);
@@ -1104,9 +1106,9 @@ static int ksm_scan_start(struct ksm_scan *ksm_scan, int scan_npages)
 		 * If the page is swapped out or in swap cache, we don't want to
 		 * scan it (it is just for performance).
 		 */
+		down_read(&slot->mm->mmap_sem);
 		if (is_present_pte(slot->mm, slot->addr +
 				   ksm_scan->page_index * PAGE_SIZE)) {
-			down_read(&slot->mm->mmap_sem);
 			val = get_user_pages(current, slot->mm, slot->addr +
 					     ksm_scan->page_index * PAGE_SIZE ,
 					      1, 0, 0, page, NULL);
@@ -1116,6 +1118,8 @@ static int ksm_scan_start(struct ksm_scan *ksm_scan, int scan_npages)
 					cmp_and_merge_page(ksm_scan, page[0]);
 				put_page(page[0]);
 			}
+		} else {
+			up_read(&slot->mm->mmap_sem);
 		}
 		scan_npages--;
 	}
