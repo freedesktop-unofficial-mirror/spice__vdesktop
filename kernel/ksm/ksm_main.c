@@ -1002,6 +1002,14 @@ static int cmp_and_merge_page(struct ksm_scan *ksm_scan, struct page *page)
 						tree_item, tmp_rmap_item)) {
 				if (rmap_item) {
 					rmap_item->stable_tree = 1;
+					rmap_item->next = tmp_rmap_item->next;
+					rmap_item->prev = tmp_rmap_item;
+					if (tmp_rmap_item->next)
+						tmp_rmap_item->next->prev =
+								      rmap_item;
+					tmp_rmap_item->next = rmap_item;
+					rmap_item->tree_item =
+						       tmp_rmap_item->tree_item;
 				}
 			}
 		}
