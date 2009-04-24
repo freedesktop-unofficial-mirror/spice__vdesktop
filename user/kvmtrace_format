@@ -362,9 +362,6 @@ def get_special(instr):
 
 summary = False
 
-if len(sys.argv) < 2:
-    usage()
-
 try:
     opts, arg = getopt.getopt(sys.argv[1:], "sc:" )
     for opt in opts:
@@ -379,7 +376,10 @@ signal.signal(signal.SIGINT,  sighand)
 
 interrupted = 0
 
-defs = read_defs(arg[0])
+if len(arg) > 0:
+    defs = read_defs(arg[0])
+else:
+    defs = read_defs("/usr/share/kvm/formats")
 
 # structure of trace record (as output by kvmtrace):
 # HDR(I) {TSC(Q)} D1(I) D2(I) D3(I) D4(I) D5(I)
