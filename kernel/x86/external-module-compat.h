@@ -394,9 +394,11 @@ struct mtrr_state_type {
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25)
+#if !defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,4)
 
 typedef u64 phys_addr_t;
 
+#endif
 #endif
 
 #ifndef CONFIG_HAVE_KVM_IRQCHIP
