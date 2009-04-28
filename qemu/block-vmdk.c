@@ -377,7 +377,7 @@ static int vmdk_open(BlockDriverState *bs, const char *filename, int flags)
         // Parent must be opened as RO.
         flags = BDRV_O_RDONLY;
 
-    ret = bdrv_file_open(&s->hd, filename, flags | BDRV_O_AUTOGROW);
+    ret = bdrv_file_open(&s->hd, filename, flags);
     if (ret < 0)
         return ret;
     if (bdrv_pread(s->hd, 0, &magic, sizeof(magic)) != sizeof(magic))
