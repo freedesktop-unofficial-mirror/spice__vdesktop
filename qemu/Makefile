@@ -216,6 +216,9 @@ qemu-img$(EXESUF): qemu-img.o qemu-tool.o osdep.o $(BLOCK_OBJS)
 qemu-nbd$(EXESUF):  qemu-nbd.o qemu-tool.o osdep.o $(BLOCK_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ -lz $(LIBS)
 
+qemu-io$(EXESUF): qemu-io.o qemu-tool.o osdep.o cmd.o $(BLOCK_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ -lz $(LIBS)
+
 clean:
 # avoid old build problems by removing potentially incorrect old files
 	rm -f config.mak config.h op-i386.h opc-i386.h gen-op-i386.h op-arm.h opc-arm.h gen-op-arm.h

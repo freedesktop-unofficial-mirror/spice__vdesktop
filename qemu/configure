@@ -1613,7 +1613,7 @@ tools=
 if test `expr "$target_list" : ".*softmmu.*"` != 0 ; then
   tools="qemu-img\$(EXESUF) $tools"
   if [ "$linux" = "yes" ] ; then
-      tools="qemu-nbd\$(EXESUF) $tools"
+      tools="qemu-nbd\$(EXESUF) qemu-io\$(EXESUF) $tools"
   fi
 fi
 echo "TOOLS=$tools" >> $config_mak
