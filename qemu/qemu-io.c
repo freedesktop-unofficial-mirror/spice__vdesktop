@@ -20,6 +20,11 @@
 
 #define CMD_NOFILE_OK	0x01
 
+
+/* Skip the code that depends on QEMUIOVector */
+#define NO_IOV
+
+
 char *progname;
 static BlockDriverState *bs;
 
@@ -136,6 +141,8 @@ static int do_pwrite(char *buf, int64_t offset, int count, int *total)
 	return 1;
 }
 
+#ifndef NO_IOV
+
 #define NOT_DONE 0x7fffffff
 static void aio_rw_done(void *opaque, int ret)
 {
@@ -175,6 +182,7 @@ static int do_aio_writev(QEMUIOVector *qiov, int64_t offset, int *total)
 	*total = qiov->size;
 	return async_ret < 0 ? async_ret : 1;
 }
+#endif
 
 
 static const cmdinfo_t read_cmd;
@@ -314,6 +322,7 @@ static const cmdinfo_t read_cmd = {
 	.help		= read_help,
 };
 
+#ifndef NO_IOV
 static const cmdinfo_t readv_cmd;
 
 static void
@@ -466,6 +475,7 @@ static const cmdinfo_t readv_cmd = {
 	.oneline	= "reads a number of bytes at a specified offset",
 	.help		= readv_help,
 };
+#endif
 
 static const cmdinfo_t write_cmd;
 
@@ -585,6 +595,7 @@ static const cmdinfo_t write_cmd = {
 	.help		= write_help,
 };
 
+#ifndef NO_IOV
 static const cmdinfo_t writev_cmd;
 
 static void
@@ -716,6 +727,7 @@ static const cmdinfo_t writev_cmd = {
 	.oneline	= "writes a number of bytes at a specified offset",
 	.help		= writev_help,
 };
+#endif
 
 static int
 flush_f(int argc, char **argv)
@@ -1080,9 +1092,13 @@ int main(int argc, char **argv)
 	add_command(&open_cmd);
 	add_command(&close_cmd);
 	add_command(&read_cmd);
+#ifndef NO_IOV
 	add_command(&readv_cmd);
+#endif
 	add_command(&write_cmd);
+#ifndef NO_IOV
 	add_command(&writev_cmd);
+#endif
 	add_command(&flush_cmd);
 	add_command(&truncate_cmd);
 	add_command(&length_cmd);
