@@ -882,6 +882,15 @@ Use @var{file} as initial ram disk.
 @item -acpitable [sig=@var{str}][,rev=@var{n}][,oem_id=@var{str}][,oem_table_id=@var{str}][,oem_rev=@var{n}] [,asl_compiler_id=@var{str}][,asl_compiler_rev=@var{n}][,data=@var{file1}[:@var{file2}]...]
 Add ACPI table with specified header fields and context from specified files.
 
+@item -smbios file=@var{binary}
+Load SMBIOS entry from binary file.
+
+@item -smbios type=0[,vendor=@var{str}][,version=@var{str}][,date=@var{str}][,release=@var{%d.%d}]
+Specify SMBIOS type 0 fields
+
+@item -smbios type=1[,manufacturer=@var{str}][,product=@var{str}][,version=@var{str}][,serial=@var{str}][,uuid=@var{uuid}][,sku=@var{str}][,family=@var{str}]
+Specify SMBIOS type 1 fields
+
 @end table
 
 Debug/Expert options:

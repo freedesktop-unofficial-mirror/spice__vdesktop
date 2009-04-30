@@ -32,6 +32,7 @@
 #include "hw/isa.h"
 #include "hw/baum.h"
 #include "hw/bt.h"
+#include "hw/smbios.h"
 #include "net.h"
 #include "console.h"
 #include "sysemu.h"
@@ -4250,6 +4251,13 @@ static void help(int exitcode)
            "-no-hpet        disable HPET\n"
            "-acpitable [sig=str][,rev=n][,oem_id=str][,oem_table_id=str][,oem_rev=n][,asl_compiler_id=str][,asl_compiler_rev=n][,data=file1[:file2]...]\n"
            "                ACPI table description\n"
+           "-smbios file=binary\n"
+           "                Load SMBIOS entry from binary file\n"
+           "-smbios type=0[,vendor=str][,version=str][,date=str][,release=%%d.%%d]\n"
+           "                Specify SMBIOS type 0 fields\n"
+           "-smbios type=1[,manufacturer=str][,product=str][,version=str][,serial=str]\n"
+           "              [,uuid=uuid][,sku=str][,family=str]\n"
+           "                Specify SMBIOS type 1 fields\n"
 #endif
 #ifdef CONFIG_CURSES
            "-curses         use a curses/ncurses interface instead of SDL\n"
@@ -4378,6 +4386,7 @@ enum {
     QEMU_OPTION_no_acpi,
     QEMU_OPTION_no_hpet,
     QEMU_OPTION_acpitable,
+    QEMU_OPTION_smbios,
     QEMU_OPTION_curses,
     QEMU_OPTION_no_kvm,
     QEMU_OPTION_no_kvm_irqchip,
@@ -4529,6 +4538,7 @@ static const QEMUOption qemu_options[] = {
     { "no-acpi", 0, QEMU_OPTION_no_acpi },
     { "no-hpet", 0, QEMU_OPTION_no_hpet },
     { "acpitable", HAS_ARG, QEMU_OPTION_acpitable },
+    { "smbios", HAS_ARG, QEMU_OPTION_smbios },
     { "no-reboot", 0, QEMU_OPTION_no_reboot },
     { "no-shutdown", 0, QEMU_OPTION_no_shutdown },
     { "show-cursor", 0, QEMU_OPTION_show_cursor },
@@ -4787,7 +4797,7 @@ static BOOL WINAPI qemu_ctrl_handler(DWORD type)
 }
 #endif
 
-static int qemu_uuid_parse(const char *str, uint8_t *uuid)
+int qemu_uuid_parse(const char *str, uint8_t *uuid)
 {
     int ret;
 
@@ -4800,6 +4810,10 @@ static int qemu_uuid_parse(const char *str, uint8_t *uuid)
 
     if(ret != 16)
         return -1;
+
+#ifdef TARGET_I386
+    smbios_add_field(1, offsetof(struct smbios_type_1, uuid), 16, uuid);
+#endif
 
     return 0;
 }
@@ -5527,6 +5541,12 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_acpitable:
                 if(acpi_table_add(optarg) < 0) {
                     fprintf(stderr, "Wrong acpi table provided\n");
+                    exit(1);
+                }
+                break;
+            case QEMU_OPTION_smbios:
+                if(smbios_entry_add(optarg) < 0) {
+                    fprintf(stderr, "Wrong smbios provided\n");
                     exit(1);
                 }
                 break;
