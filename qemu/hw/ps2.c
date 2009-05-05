@@ -731,12 +731,12 @@ static void regitser_keyboard(PS2KbdState *s)
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.base_version = VM_INTERFACE_VERSION;
     interface->vd_interface.base.type = VD_INTERFACE_KEYBOARD;
     interface->vd_interface.base.id = ++keyboard_interface_id;
     interface->vd_interface.base.description = "ps2 keyboard";
-    interface->vd_interface.base.major_vertion = VD_INTERFACE_KEYBOARD_MAJOR;
-    interface->vd_interface.base.minor_vertion = VD_INTERFACE_KEYBOARD_MINOR;
+    interface->vd_interface.base.major_version = VD_INTERFACE_KEYBOARD_MAJOR;
+    interface->vd_interface.base.minor_version = VD_INTERFACE_KEYBOARD_MINOR;
     interface->vd_interface.push_scan_freg = interface_push_scan_freg;
     interface->vd_interface.get_leds = interface_get_leds;
     interface->vd_interface.register_leds_notifier = interface_register_leds_notifier;
@@ -771,12 +771,12 @@ static void regitser_mouse(PS2MouseState *s)
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.base_version = VM_INTERFACE_VERSION;
     interface->vd_interface.base.type = VD_INTERFACE_MOUSE;
     interface->vd_interface.base.id = mouse_interface_id++;
     interface->vd_interface.base.description = "ps2 mouse";
-    interface->vd_interface.base.major_vertion = VD_INTERFACE_MOUSE_MAJOR;
-    interface->vd_interface.base.minor_vertion = VD_INTERFACE_MOUSE_MINOR;
+    interface->vd_interface.base.major_version = VD_INTERFACE_MOUSE_MAJOR;
+    interface->vd_interface.base.minor_version = VD_INTERFACE_MOUSE_MINOR;
 
     interface->vd_interface.moution = interface_moution;
     interface->vd_interface.buttons = interface_buttons;

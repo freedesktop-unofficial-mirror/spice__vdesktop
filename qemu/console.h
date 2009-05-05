@@ -195,7 +195,8 @@ extern uint8_t _translate_keycode(const int key);
 #define REBOOT_ASYNC_EVENT 5
 #define VMSTOP_ASYNC_EVENT 6
 #define WATERMARK_ASYNC_EVENT 7
-#define MAX_ASYNC_EVENT  WATERMARK_ASYNC_EVENT
+#define VDI_ASYNC_EVENT 8
+#define MAX_ASYNC_EVENT VDI_ASYNC_EVENT
 
 /* FIXME: term_printf et al should probably go elsewhere so everything
    does not need to include console.h  */

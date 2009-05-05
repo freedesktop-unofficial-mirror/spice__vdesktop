@@ -595,12 +595,12 @@ static void regitser_tablet(USBMouseState *s)
     TabletInterface *interface = &s->interface;
     static int tablet_interface_id = 0;
     
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_TABLET;
     interface->base.id = ++tablet_interface_id;
     interface->base.description = "usb tablet";
-    interface->base.major_vertion = VD_INTERFACE_TABLET_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_TABLET_MINOR;
+    interface->base.major_version = VD_INTERFACE_TABLET_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_TABLET_MINOR;
 
 
     interface->set_logical_size = interface_set_logical_size;

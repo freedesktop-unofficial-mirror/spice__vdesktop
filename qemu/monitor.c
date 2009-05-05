@@ -261,13 +261,19 @@ static void do_notify_async_events(char *event_str, char *enable)
         event = VMSTOP_ASYNC_EVENT;
     else if (!strcmp(event_str, "watermark"))
         event = WATERMARK_ASYNC_EVENT;
-    else
+    else if (!strcmp(event_str, "vdi"))
+        event = VDI_ASYNC_EVENT;
+    else {
+        term_printf("notify: invalid event %s\n", event_str);
         return;
+    }
 
     if (!strcmp(enable, "on"))
         async_printable_events[event] = 1;
-    else
+    else if (!strcmp(enable, "off"))
         async_printable_events[event] = 0;
+    else
+        term_printf("notify: invalid argument\n");
 }
 
 static void do_commit(const char *device)
@@ -1642,7 +1648,7 @@ static term_cmd_t term_cmds[] = {
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
     { "notify", "ss", do_notify_async_events,
-      "vnc|rtc|migration|reboot|shutdown|vmstop|watermark on|off",
+      "vnc|rtc|migration|reboot|shutdown|vmstop|watermark|vdi on|off",
       "enable / disable printing of notifications for the specified event" },
     { "block_set_watermark", "Bi", do_block_set_watermark,
       "block-device offset(in MB)",
@@ -2901,7 +2907,7 @@ static void monitor_remove_info(QTermInterface *term, VDObjectRef command_ref)
     remove_command((term_cmd_t *)command_ref, &info_commands);
 }
 
-static void regitser_interface()
+static void regitser_interface(void)
 {
     QTermInterface *interface = (QTermInterface *)qemu_mallocz(sizeof(*interface));
 
@@ -2909,12 +2915,12 @@ static void regitser_interface()
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_QTERM;
     interface->base.id = 0;
     interface->base.description = "qemue terminal";
-    interface->base.major_vertion = VD_INTERFACE_QTERM_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_QTERM_MINOR;
+    interface->base.major_version = VD_INTERFACE_QTERM_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_QTERM_MINOR;
     interface->add_action_command_handler = monitor_add_action_command;
     interface->remove_action_command_handler = monitor_remove_action;
     interface->add_info_command_handler = monitor_add_info_command;

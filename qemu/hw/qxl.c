@@ -837,12 +837,12 @@ static void vdi_port_register_interface(PCIVDIPortDevice *d)
         return;
     }
     
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_VDI_PORT;
     interface->base.id = ++interface_id;
     interface->base.description = "vdi port";
-    interface->base.major_vertion = VD_INTERFACE_VDI_PORT_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_VDI_PORT_MINOR;
+    interface->base.major_version = VD_INTERFACE_VDI_PORT_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_VDI_PORT_MINOR;
 
     interface->plug = vdi_port_interface_plug;
     interface->unplug = vdi_port_interface_unplug;
@@ -1650,12 +1650,12 @@ static void regitser_interface(PCIQXLDevice *d)
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->vd_interface.base.base_vertion = VM_INTERFACE_VERTION;
+    interface->vd_interface.base.base_version = VM_INTERFACE_VERSION;
     interface->vd_interface.base.type = VD_INTERFACE_QXL;
     interface->vd_interface.base.id = d->id;
     interface->vd_interface.base.description = "QXL GPU";
-    interface->vd_interface.base.major_vertion = VD_INTERFACE_QXL_MAJOR;
-    interface->vd_interface.base.minor_vertion = VD_INTERFACE_QXL_MINOR;
+    interface->vd_interface.base.major_version = VD_INTERFACE_QXL_MAJOR;
+    interface->vd_interface.base.minor_version = VD_INTERFACE_QXL_MINOR;
 
     interface->vd_interface.pci_vendor = QUMRANET_PCI_VENDOR_ID;
     interface->vd_interface.pci_id = QXL_DEVICE_ID;

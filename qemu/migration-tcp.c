@@ -716,12 +716,12 @@ void tcp_migration_register_interface()
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_MIGRATION;
     interface->base.id = 0;
     interface->base.description = "qemue migration";
-    interface->base.major_vertion = VD_INTERFACE_MIGRATION_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_MIGRATION_MINOR;
+    interface->base.major_version = VD_INTERFACE_MIGRATION_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_MIGRATION_MINOR;
     interface->register_notifiers = interface_register_notifiers;
     interface->unregister_notifiers = interface_unregister_notifiers;
     interface->notifier_done = interface_notifier_done;

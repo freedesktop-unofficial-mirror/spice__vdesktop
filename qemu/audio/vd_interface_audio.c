@@ -213,12 +213,12 @@ static void regitser_playback(void)
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_PLAYBACK;
     interface->base.id = playback_interface_id++;
     interface->base.description = "playback";
-    interface->base.major_vertion = VD_INTERFACE_PLAYBACK_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_PLAYBACK_MINOR;
+    interface->base.major_version = VD_INTERFACE_PLAYBACK_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_PLAYBACK_MINOR;
 
     interface->plug = interface_play_plug;
     interface->unplug = interface_play_unplug;
@@ -252,12 +252,12 @@ static void regitser_record(void)
         printf("%s: malloc failed\n", __FUNCTION__);
         exit(-1);
     }
-    interface->base.base_vertion = VM_INTERFACE_VERTION;
+    interface->base.base_version = VM_INTERFACE_VERSION;
     interface->base.type = VD_INTERFACE_RECORD;
     interface->base.id = record_interface_id++;
     interface->base.description = "record";
-    interface->base.major_vertion = VD_INTERFACE_RECORD_MAJOR;
-    interface->base.minor_vertion = VD_INTERFACE_RECORD_MINOR;
+    interface->base.major_version = VD_INTERFACE_RECORD_MAJOR;
+    interface->base.minor_version = VD_INTERFACE_RECORD_MINOR;
 
     interface->plug = interface_record_plug;
     interface->unplug = interface_record_unplug;

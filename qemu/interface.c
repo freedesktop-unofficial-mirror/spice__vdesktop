@@ -219,8 +219,18 @@ static void core_term_printf(CoreInterface *core, const char* format, ...)
     va_end(ap);
 }
 
+static void core_log(CoreInterface *core, LogLevel level, const char* componnent, const char* format, ...)
+{
+    char message[2048];
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(message, sizeof(message), format, ap);
+    va_end(ap);
+    term_printf_async(VDI_ASYNC_EVENT, "%s: %s\n", componnent, message);
+}
+
 CoreInterface core_interface = {
-    {VM_INTERFACE_VERTION, VD_INTERFACE_CORE, 0, "qwnu core services", VD_INTERFACE_CORE_MAJOR, VD_INTERFACE_CORE_MINOR},
+    {VM_INTERFACE_VERSION, VD_INTERFACE_CORE, 0, "qwnu core services", VD_INTERFACE_CORE_MINOR, VD_INTERFACE_CORE_MAJOR},
     core_next,
     core_register_change_notifiers,
     core_unregister_change_notifiers,
@@ -230,4 +240,6 @@ CoreInterface core_interface = {
     core_destroy_timer,
     core_set_file_handlers,
     core_term_printf,
+    core_log,
 };
+
