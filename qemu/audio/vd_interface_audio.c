@@ -5,6 +5,124 @@
 #include "qemu-timer.h"
 #include "interface.h"
 
+//#define WAVE_CAPTURE
+#ifdef WAVE_CAPTURE
+
+#include <fcntl.h>
+
+#define WAVE_BUF_SIZE (1024 * 1024 * 20)
+
+typedef struct __attribute__ ((__packed__)) ChunkHeader {
+    uint32_t id;
+    uint32_t size;
+} ChunkHeader;
+
+typedef struct __attribute__ ((__packed__)) FormatInfo {
+    uint16_t compression_code;
+    uint16_t num_channels;
+    uint32_t sample_rate;
+    uint32_t average_bytes_per_second;
+    uint16_t block_align;
+    uint16_t bits_per_sample;
+    //uint16_t extra_format_bytes;
+    //uint8_t extra[0];
+} FormatInfo;
+
+static uint8_t* wave_buf = NULL;
+static uint8_t* wave_now = NULL;
+static uint8_t* wave_end = NULL;
+static int wave_blocked = 0;
+
+static void write_all(int fd, uint8_t* data, uint32_t size)
+{
+    while (size) {
+        int n = write(fd, data, size);
+        if (n == -1) {
+            if (errno != EINTR) {
+                printf("%s: failed\n", __FUNCTION__);
+                exit(-1);
+            }
+        } else {
+            data += n;
+            size -= n;
+        }
+    }
+}
+
+static void write_wave(void)
+{
+    static uint32_t file_id = 0;
+    char file_name[100];
+    ChunkHeader header;
+    FormatInfo format;
+
+    if (wave_buf == wave_now) {
+        return;
+    }
+
+    sprintf(file_name, "/tmp/vdi_%u.wav", ++file_id);
+    int fd = open(file_name, O_CREAT| O_TRUNC | O_WRONLY, 0666);
+    if (fd == -1) {
+        printf("%s: open file %s failed\n", __FUNCTION__, file_name);
+        return;
+    }
+
+    memcpy((char *)&header.id, "RIFF", 4);
+    header.size = 4;
+    write_all(fd, (uint8_t *)&header, sizeof(header));
+    write_all(fd, (uint8_t *)"WAVE", 4);
+    
+    memcpy((char *)&header.id, "fmt ", 4);
+    header.size = sizeof(format);
+    write_all(fd, (uint8_t *)&header, sizeof(header));
+    
+    format.compression_code = 1;
+    format.num_channels = 2;
+    format.sample_rate = 44100;
+    format.average_bytes_per_second = format.sample_rate * 4;
+    format.block_align = 4;
+    format.bits_per_sample = 16;
+    write_all(fd, (uint8_t *)&format, sizeof(format));
+    
+    memcpy((char *)&header.id, "data", 4);
+    header.size = wave_now - wave_buf;
+    write_all(fd, (uint8_t *)&header, sizeof(header));
+    write_all(fd, wave_buf, header.size);
+    close(fd);
+}
+
+static void init_wave(void)
+{
+    if (!wave_buf) {
+        wave_buf = malloc(WAVE_BUF_SIZE);
+    }
+    wave_now = wave_buf;
+    wave_end = wave_buf + WAVE_BUF_SIZE;
+}
+
+static void start_wave(void)
+{
+    wave_blocked = 0;
+    wave_now = wave_buf;
+}
+
+static void put_wave_data(uint8_t *data, uint32_t size)
+{
+    if (wave_blocked || size > wave_end - wave_now) {
+        wave_blocked = 1;
+        return;
+    }
+    memcpy((void *)wave_now, (void *)data, size);
+    wave_now += size;
+}
+
+static void end_wave(void)
+{
+    write_wave();
+}
+
+#endif
+
 #define dprintf(format, ...) \
     printf("%s: " format "\n", __FUNCTION__, ## __VA_ARGS__ )
 
@@ -24,6 +142,7 @@ typedef struct InterfaceVoiceOut {
 typedef struct InterfaceVoiceIn {
     HWVoiceOut base;
     uint64_t prev_ticks;
+    uint32_t samples[LINE_IN_SAMPLES];
 } InterfaceVoiceIn;
 
 static struct audio_option options[] = {
@@ -39,8 +158,6 @@ typedef struct Interface_audio {
 
     RecordInterface *record_interface;
     RecordPlug *record_plug;
-    uint32_t record_avail;
-    uint32_t *record_now;
     uint32_t silence[LINE_IN_SAMPLES];
 
     InterfaceVoiceOut *voic_out;
@@ -56,8 +173,6 @@ static Interface_audio driver = {
 
     .record_interface = NULL,
     .record_plug = NULL,
-    .record_avail = 0,
-    .record_now = NULL,
 
     .voic_out = NULL,
     .voic_in = NULL,
@@ -126,8 +241,6 @@ static void interface_record_unplug(RecordInterface *recorder, VDObjectRef obj)
 {
     ASSERT(driver.record_plug && recorder == driver.record_interface);
     driver.record_plug = NULL;
-    driver.record_avail = 0;
-    driver.record_now = NULL;
 }
 
 static void regitser_record(void)
@@ -263,7 +376,9 @@ static int line_out_run(HWVoiceOut *hw)
     bytes = (ticks * hw->info.bytes_per_second) / (1000 * 1000 * 1000);
 
     voice_out->prev_ticks = now;
-    decr = (bytes > INT_MAX) ? INT_MAX >> hw->info.shift : bytes >> hw->info.shift;
+
+    decr = (bytes > INT_MAX) ? INT_MAX >> hw->info.shift :
+                                        (bytes + (1 << (hw->info.shift - 1))) >> hw->info.shift;
     decr = audio_MIN(live, decr);
 
     samples = decr;
@@ -333,7 +448,9 @@ static int line_in_init(HWVoiceIn *hw, struct audsettings *as)
     struct audsettings settings;
 
     dprintf("");
-    
+#ifdef WAVE_CAPTURE
+    init_wave();
+#endif
     settings.freq = VD_INTERFACE_RECORD_FREQ; 
     settings.nchannels = VD_INTERFACE_RECORD_CHAN;
     if (VD_INTERFACE_PLAYBACK_FMT != VD_INTERFACE_AUDIO_FMT_S16) {
@@ -357,69 +474,60 @@ static void line_in_fini(HWVoiceIn *hw)
 static int line_in_run(HWVoiceIn *hw)
 {
     InterfaceVoiceIn *voice_in = (InterfaceVoiceIn *)hw;
-    int live;
-    int dead;
-    int samples;
+    int num_samples;
     int ready;
     int len[2];
     uint64_t now;
     uint64_t ticks;
-    uint64_t bytes;
+    uint64_t delta_samp;
+    uint32_t *samples;
 
-
-    live = audio_pcm_hw_get_live_in(hw);
-
-    if (!(dead = hw->samples - live)) {
+    if (!(num_samples = hw->samples - audio_pcm_hw_get_live_in(hw))) {
         return 0;
     }
 
     now = get_monotonic_time();
     ticks = now - voice_in->prev_ticks;
     voice_in->prev_ticks = now;
-    bytes = (ticks * hw->info.bytes_per_second) / (1000 * 1000 * 1000);
+    delta_samp = (ticks * hw->info.bytes_per_second) / (1000 * 1000 * 1000);
+    delta_samp = (delta_samp + (1 << (hw->info.shift - 1))) >> hw->info.shift;
 
-    if (driver.record_avail) {
-        ready = driver.record_avail;
-    } else if (driver.record_plug) {
-        driver.record_plug->advance(driver.record_plug,
-                                    &driver.record_now,
-                                    &driver.record_avail);
-        ready = driver.record_avail;
+    num_samples = audio_MIN(num_samples, delta_samp);
+
+    if (driver.record_plug) {
+        ready = driver.record_plug->read(driver.record_plug, num_samples, voice_in->samples);
+        samples = voice_in->samples;
     } else {
-        ready = INT_MAX;
+        ready = num_samples;
+        samples = driver.silence;
     }
-    samples = audio_MIN(ready, dead);
-    samples = audio_MIN(samples, bytes >> hw->info.shift);
 
-    if (hw->wpos + samples > hw->samples) {
+    num_samples = audio_MIN(ready, num_samples);
+
+    if (hw->wpos + num_samples > hw->samples) {
         len[0] = hw->samples - hw->wpos;
-        len[1] = samples - len[0];
+        len[1] = num_samples - len[0];
     } else {
-        len[0] = samples;
+        len[0] = num_samples;
         len[1] = 0;
     }
 
-    if (driver.record_avail) {
-        hw->conv(hw->conv_buf + hw->wpos, driver.record_now, len[0],
+#ifdef WAVE_CAPTURE
+    put_wave_data((uint8_t *)samples, len[0] * 4);
+#endif
+    hw->conv(hw->conv_buf + hw->wpos, samples, len[0], &nominal_volume);
+
+    if (len[1]) {
+#ifdef WAVE_CAPTURE
+        put_wave_data((uint8_t *)(samples + len[0]), len[1] * 4);
+#endif
+        hw->conv(hw->conv_buf, samples + len[0], len[1],
                  &nominal_volume);
-        if (len[1]) {
-            hw->conv(hw->conv_buf, driver.record_now + len[0], len[1],
-                     &nominal_volume);
-        }
-        driver.record_now += samples;
-        driver.record_avail -= samples;
-    } else {
-        hw->conv(hw->conv_buf + hw->wpos, driver.silence, len[0],
-                 &nominal_volume);
-        if (len[1]) {
-            hw->conv(hw->conv_buf, driver.silence, len[1],
-                     &nominal_volume);
-        }
     }
 
-    hw->wpos = (hw->wpos + samples) % hw->samples;
+    hw->wpos = (hw->wpos + num_samples) % hw->samples;
 
-    return samples;
+    return num_samples;
 }
 
 static int line_in_read(SWVoiceIn *sw, void *buf, int size)
@@ -433,12 +541,18 @@ static int line_in_ctl(HWVoiceIn *hw, int cmd, ...)
 
     switch (cmd) {
     case VOICE_ENABLE:
+#ifdef WAVE_CAPTURE
+        start_wave();
+#endif
         voice_in->prev_ticks = get_monotonic_time();
         if (driver.record_plug) {
             driver.record_plug->start(driver.record_plug);
         }
         break;
     case VOICE_DISABLE:
+#ifdef WAVE_CAPTURE
+        end_wave();
+#endif
         if (driver.record_plug) {
             driver.record_plug->stop(driver.record_plug);
         }

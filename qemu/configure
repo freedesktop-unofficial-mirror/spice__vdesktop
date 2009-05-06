@@ -1150,7 +1150,7 @@ fi
 ##########################################
 # spice probe
 if test "$spice" = "yes" ; then
-  `pkg-config spice` || spice="no"
+  `pkg-config --atleast-version=0.2.0 spice` || spice="no"
 fi
 if test "$spice" = "yes" ; then
   cat > $TMPC << EOF
