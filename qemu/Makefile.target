@@ -613,7 +613,7 @@ ifndef CONFIG_USER_ONLY
 OBJS=vl.o osdep.o monitor.o pci.o loader.o isa_mmio.o machine.o
 # virtio has to be here due to weird dependency between PCI and virtio-net.
 # need to fix this properly
-OBJS+=virtio.o virtio-blk.o virtio-balloon.o virtio-net.o
+OBJS+=virtio.o virtio-blk.o virtio-net.o
 OBJS+=fw_cfg.o
 ifdef CONFIG_KVM
 OBJS+=kvm.o kvm-all.o
@@ -718,7 +718,7 @@ OBJS+= cirrus_vga.o apic.o parallel.o acpi.o piix_pci.o
 OBJS+= usb-uhci.o vmmouse.o vmport.o vmware_vga.o hpet.o smbios.o
 OBJS+= extboot.o
 # virtio support
-OBJS+= virtio.o virtio-blk.o virtio-balloon.o
+OBJS+= virtio.o virtio-blk.o
 OBJS += virtio-net.o
 
 ifeq ($(CONFIG_QXL),yes)
@@ -740,7 +740,7 @@ OBJS+= fdc.o mc146818rtc.o serial.o i8259.o ipf.o
 OBJS+= cirrus_vga.o parallel.o acpi.o piix_pci.o
 OBJS+= usb-uhci.o smbus_eeprom.o
 # virtio support
-OBJS+= virtio.o virtio-blk.o virtio-balloon.o
+OBJS+= virtio.o virtio-blk.o
 OBJS+= virtio-net.o
 endif
 ifeq ($(TARGET_BASE_ARCH), ppc)
