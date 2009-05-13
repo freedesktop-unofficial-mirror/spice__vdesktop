@@ -1061,7 +1061,6 @@ pci_e1000_init(PCIBus *bus, NICInfo *nd, int devfn)
 	return NULL;
 
     pci_conf = d->dev.config;
-    memset(pci_conf, 0, 256);
 
     *(uint16_t *)(pci_conf+0x00) = cpu_to_le16(0x8086);
     *(uint16_t *)(pci_conf+0x02) = cpu_to_le16(E1000_DEVID);
