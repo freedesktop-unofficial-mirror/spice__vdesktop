@@ -76,6 +76,11 @@ struct BlockDriver {
                               QEMUSnapshotInfo **psn_info);
     int (*bdrv_get_info)(BlockDriverState *bs, BlockDriverInfo *bdi);
 
+    int (*bdrv_put_buffer)(BlockDriverState *bs, const uint8_t *buf,
+                           int64_t pos, int size);
+    int (*bdrv_get_buffer)(BlockDriverState *bs, uint8_t *buf,
+                           int64_t pos, int size);
+
     /* removable device specific */
     int (*bdrv_is_inserted)(BlockDriverState *bs);
     int (*bdrv_media_changed)(BlockDriverState *bs);
@@ -130,6 +135,9 @@ struct BlockDriverState {
     uint64_t wr_bytes;
     uint64_t rd_ops;
     uint64_t wr_ops;
+
+    /* Whether the disk can expand beyond total_sectors */
+    int growable;
 
     /* NOTE: the following infos are only hints for real hardware
        drivers. They are not used by the block driver */
