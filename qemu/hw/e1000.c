@@ -1035,6 +1035,14 @@ e1000_mmio_map(PCIDevice *pci_dev, int region_num,
                                      excluded_regs[i] - 4);
 }
 
+static void
+e1000_cleanup(VLANClientState *vc)
+{
+    E1000State *d = vc->opaque;
+
+    unregister_savevm("e1000", d);
+}
+
 static int
 pci_e1000_uninit(PCIDevice *dev)
 {
@@ -1101,6 +1109,7 @@ pci_e1000_init(PCIBus *bus, NICInfo *nd, int devfn)
 
     d->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  e1000_receive, e1000_can_receive, d);
+    d->vc->cleanup = e1000_cleanup;
     d->vc->link_status_changed = e1000_set_link_status;
 
     qemu_format_nic_info_str(d->vc, d->nd->macaddr);
