@@ -362,6 +362,9 @@ void qemu_del_vlan_client(VLANClientState *vc)
     while (*pvc != NULL)
         if (*pvc == vc) {
             *pvc = vc->next;
+            if (vc->cleanup) {
+                vc->cleanup(vc);
+            }
             free(vc->name);
             free(vc->model);
             free(vc);
@@ -905,6 +908,20 @@ static void tap_set_offload(VLANClientState *vc, int csum, int tso4, int tso6,
 }
 #endif /* TUNSETOFFLOAD */
 
+static int launch_script(const char *setup_script, const char *ifname, int fd);
+
+static void tap_cleanup(VLANClientState *vc)
+{
+    TAPState *s = vc->opaque;
+
+    if (s->down_script[0])
+        launch_script(s->down_script, s->down_script_arg, s->fd);
+
+    qemu_set_fd_handler(s->fd, NULL, NULL, NULL);
+    close(s->fd);
+    qemu_free(s);
+}
+
 /* fd support */
 
 static TAPState *net_tap_fd_init(VLANState *vlan,
@@ -921,6 +938,7 @@ static TAPState *net_tap_fd_init(VLANState *vlan,
     s->fd = fd;
     s->has_vnet_hdr = vnet_hdr != 0;
     s->vc = qemu_new_vlan_client(vlan, model, name, tap_receive, NULL, s);
+    s->vc->cleanup = tap_cleanup;
 #ifdef HAVE_IOVEC
     s->vc->fd_readv = tap_receive_iov;
 #endif
@@ -1242,6 +1260,14 @@ static void vde_from_qemu(void *opaque, const uint8_t *buf, int size)
     }
 }
 
+static void vde_cleanup(VLANClientState *vc)
+{
+    VDEState *s = vc->opaque;
+    qemu_set_fd_handler(vde_datafd(s->vde), NULL, NULL, NULL);
+    vde_close(s->vde);
+    qemu_free(s);
+}
+
 static int net_vde_init(VLANState *vlan, const char *model,
                         const char *name, const char *sock,
                         int port, const char *group, int mode)
@@ -1265,6 +1291,7 @@ static int net_vde_init(VLANState *vlan, const char *model,
         return -1;
     }
     s->vc = qemu_new_vlan_client(vlan, model, name, vde_from_qemu, NULL, s);
+    s->vc->cleanup = vde_cleanup;
     qemu_set_fd_handler(vde_datafd(s->vde), vde_to_qemu, NULL, s);
     snprintf(s->vc->info_str, sizeof(s->vc->info_str), "sock=%s,fd=%d",
              sock, vde_datafd(s->vde));
@@ -2051,27 +2078,18 @@ void net_cleanup(void)
 {
     VLANState *vlan;
 
-#if !defined(_WIN32)
     /* close network clients */
     for(vlan = first_vlan; vlan != NULL; vlan = vlan->next) {
-        VLANClientState *vc;
+        VLANClientState *vc = vlan->first_client;
 
-        for(vc = vlan->first_client; vc != NULL; vc = vc->next) {
-            if (vc->fd_read == tap_receive) {
-                TAPState *s = vc->opaque;
+        while (vc) {
+            VLANClientState *next = vc->next;
 
-                if (s->down_script[0])
-                    launch_script(s->down_script, s->down_script_arg, s->fd);
-            }
-#if defined(CONFIG_VDE)
-            if (vc->fd_read == vde_from_qemu) {
-                VDEState *s = vc->opaque;
-                vde_close(s->vde);
-            }
-#endif
+            qemu_del_vlan_client(vc);
+
+            vc = next;
         }
     }
-#endif
 }
 
 void net_client_check(void)
