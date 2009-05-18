@@ -5,7 +5,7 @@
  *	Izik Eidus
  */
 
-#define KPROBES_ENABLE_SWAP
+//#define KPROBES_ENABLE_SWAP
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/kprobes.h>
