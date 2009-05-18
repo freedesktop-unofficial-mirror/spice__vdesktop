@@ -319,11 +319,6 @@ static void vnc_resize(VncState *vs, int w, int h)
 {
     vs->old_data = qemu_realloc(vs->old_data, w * h * vs->depth);
 
-    if (vs->old_data == NULL) {
-	fprintf(stderr, "vnc: memory allocation failed\n");
-	exit(1);
-    }
-
     if (vs->width != w || vs->height != h) {
         VNC_DEBUG("%s/%d: %dx%d\n", __FUNCTION__, vs->csock, w, h);
         vs->width = w;
@@ -351,10 +346,6 @@ static void vnc_dpy_resize(DisplayState *ds, int w, int h)
     ds->height = h;
     ds->linesize = w * ds->depth/8;
     ds->data = qemu_realloc(ds->data, ds->linesize * ds->height);
-    if (ds->data == NULL) {
-	fprintf(stderr, "vnc: memory allocation failed\n");
-	exit(1);
-    }
 
     while (vs != NULL) {
         vnc_resize(vs, w, h);
