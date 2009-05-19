@@ -325,6 +325,7 @@ static void vnc_resize(VncState *vs, int w, int h)
     }
 
     if (vs->width != w || vs->height != h) {
+        VNC_DEBUG("%s/%d: %dx%d\n", __FUNCTION__, vs->csock, w, h);
         vs->width = w;
         vs->height = h;
         if (vs->csock != -1 && vs->has_resize) {
@@ -345,6 +346,7 @@ static void vnc_dpy_resize(DisplayState *ds, int w, int h)
     VncDisplay *vd = ds->opaque;
     VncState *vs = vd->clients;
 
+    VNC_DEBUG("%s: %dx%d\n", __FUNCTION__, w, h);
     ds->width = w;
     ds->height = h;
     ds->linesize = w * ds->depth/8;
@@ -1682,6 +1684,8 @@ static int protocol_client_init(VncState *vs, uint8_t *data, size_t len)
     char buf[1024];
     int size;
 
+    VNC_DEBUG("%s/%d: %dx%d\n", __FUNCTION__, vs->csock,
+              vs->ds->width, vs->ds->height);
     vs->width = ds_get_width(vs->ds);
     vs->height = ds_get_height(vs->ds);
     vnc_write_u16(vs, ds_get_width(vs->ds));
@@ -2347,21 +2351,9 @@ static void vnc_connect(VncDisplay *vd, int csock)
 
     vs->ds = vd->ds;
     vs->ds->idle = 0;
-    if (vs->ds->depth != 32) {
-        /*
-         * We allways run with 32bpp internally.
-         * Easiest to handle with multiple clients, and
-         * this is what almost everybody uses anyway.
-         */
-        vs->ds->depth = 32;
-        console_color_init(vs->ds);
-    }
+
     vnc_colordepth(vs, vs->ds->depth);
-    if (vs->ds->width && vs->ds->height) {
-        vnc_resize(vs, vs->ds->width, vs->ds->height);
-    } else {
-        vnc_resize(vs, 640, 480);
-    }
+    vnc_resize(vs, vs->ds->width, vs->ds->height);
 
     vnc_write(vs, "RFB 003.008\n", 12);
     vnc_flush(vs);
@@ -2422,6 +2414,17 @@ void vnc_display_init(DisplayState *ds)
     vs->ds->dpy_copy = vnc_dpy_copy;
     vs->ds->dpy_update = vnc_dpy_update;
     vs->ds->dpy_resize = vnc_dpy_resize;
+
+    if (vs->ds->depth != 32) {
+        /*
+         * We allways run with 32bpp internally.
+         * Easiest to handle with multiple clients, and
+         * this is what almost everybody uses anyway.
+         */
+        vs->ds->depth = 32;
+        console_color_init(vs->ds);
+    }
+    vnc_dpy_resize(vs->ds, 640, 480);
 
     if (!gcry_check_version (GCRYPT_VERSION)) {
         fprintf(stderr, "libgcrypt initialization error\n");
