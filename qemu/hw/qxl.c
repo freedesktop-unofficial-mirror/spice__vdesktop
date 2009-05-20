@@ -36,6 +36,10 @@
 #define TRUE 1
 #define FALSE 0
 
+#define WAIT_CMD_DELAY_MS 10 
+#define WAIT_CMD_MESSAGE_THRESHOLD 2
+#define WAIT_CMD_MESSAGE_INTERVAL_MS 5000
+
 #define QXL_DEV_NAME "qxl"
 #define VDI_PORT_DEV_NAME "vdi_port"
 
@@ -1143,6 +1147,7 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             QXLCommand *cmd;
             int wait;
             int notify;
+            int wait_count;
 
             drawable = (QXLDrawable *)malloc(sizeof(*drawable) + sizeof(*image));
             ASSERT(drawable);
@@ -1178,11 +1183,14 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             image->bitmap.palette = 0;
 
             ring = &client->state.vga_ring;
+            wait_count = -WAIT_CMD_MESSAGE_THRESHOLD;
             for (;;) {    
                 RING_PROD_WAIT(ring, wait);
                 if (wait) {
-                    printf("%s: wait\n", __FUNCTION__);
-                    usleep(10000);
+                    usleep(WAIT_CMD_DELAY_MS * 1000);
+                    if (!(wait_count++ % (WAIT_CMD_MESSAGE_INTERVAL_MS / WAIT_CMD_DELAY_MS))) {
+                        printf("%s: waiting for command\n", __FUNCTION__);
+                    }
                     continue;
                 }
                 break;
