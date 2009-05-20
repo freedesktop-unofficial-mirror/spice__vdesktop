@@ -2687,6 +2687,10 @@ static void unmap_linear_vram(CirrusVGAState *s)
     if (s->map_addr && s->lfb_addr && s->lfb_end)
         s->map_addr = s->map_end = 0;
 
+    cpu_register_physical_memory(isa_mem_base + 0xa0000, 0x8000,
+                                (s->vram_offset + s->cirrus_bank_base[0]) | IO_MEM_UNASSIGNED);
+    cpu_register_physical_memory(isa_mem_base + 0xa8000, 0x8000,
+                                (s->vram_offset + s->cirrus_bank_base[1]) | IO_MEM_UNASSIGNED);
     cpu_register_physical_memory(isa_mem_base + 0xa0000, 0x20000,
                                  s->vga_io_memory);
     vga_dirty_log_start((VGAState *)s);
@@ -3197,6 +3201,7 @@ static void cirrus_reset(void *opaque)
     CirrusVGAState *s = opaque;
 
     vga_reset(s);
+    unmap_linear_vram(s);
     s->sr[0x06] = 0x0f;
     if (s->device_id == CIRRUS_ID_CLGD5446) {
         /* 4MB 64 bit memory config, always PCI */
