@@ -561,8 +561,7 @@ struct rchan *kvm_relay_open(const char *base_filename,
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
-
-static inline int get_user_pages_fast(unsigned long start, int nr_pages,
+static inline int kvm_get_user_pages_fast(unsigned long start, int nr_pages,
 				      int write, struct page **pages)
 {
 	int npages;
