@@ -1191,8 +1191,7 @@ out:
  */
 AssignedDevInfo *add_assigned_device(const char *arg)
 {
-    char *cp, *cp1;
-    char device[8];
+    char device[16];
     char dma[6];
     int r;
     AssignedDevInfo *adev;
@@ -1203,6 +1202,13 @@ AssignedDevInfo *add_assigned_device(const char *arg)
         return NULL;
     }
     r = get_param_value(device, sizeof(device), "host", arg);
+    if (!r)
+         goto bad;
+
+    r = pci_parse_host_devaddr(device, &adev->bus, &adev->dev, &adev->func);
+    if (r)
+        goto bad;
+
     r = get_param_value(adev->name, sizeof(adev->name), "name", arg);
     if (!r)
 	snprintf(adev->name, sizeof(adev->name), "%s", device);
@@ -1212,18 +1218,6 @@ AssignedDevInfo *add_assigned_device(const char *arg)
     if (r && !strncmp(dma, "none", 4))
         adev->disable_iommu = 1;
 #endif
-    cp = device;
-    adev->bus = strtoul(cp, &cp1, 16);
-    if (*cp1 != ':')
-        goto bad;
-    cp = cp1 + 1;
-
-    adev->dev = strtoul(cp, &cp1, 16);
-    if (*cp1 != '.')
-        goto bad;
-    cp = cp1 + 1;
-
-    adev->func = strtoul(cp, &cp1, 16);
 
     LIST_INSERT_HEAD(&adev_head, adev, next);
     return adev;
