@@ -707,6 +707,7 @@ OBJS += pci-hotplug.o
 
 ifeq ($(USE_KVM_DEVICE_ASSIGNMENT), 1)
 OBJS+= device-assignment.o
+LIBS+=-lpci
 endif
 
 ifeq ($(TARGET_BASE_ARCH), i386)
