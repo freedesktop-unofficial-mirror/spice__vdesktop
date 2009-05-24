@@ -440,6 +440,7 @@ typedef struct RawAIOCB {
     BlockDriverAIOCB common;
     struct qemu_paiocb aiocb;
     struct RawAIOCB *next;
+    QEMUBH *bh;
     int ret;
 } RawAIOCB;
 
@@ -594,6 +595,8 @@ static void raw_aio_em_cb(void* opaque)
 {
     RawAIOCB *acb = opaque;
     acb->common.cb(acb->common.opaque, acb->ret);
+    qemu_bh_delete(acb->bh);
+    acb->bh = NULL;
     qemu_aio_release(acb);
 }
 
@@ -610,11 +613,12 @@ static BlockDriverAIOCB *raw_aio_read(BlockDriverState *bs,
     BDRVRawState *s = bs->opaque;
 
     if (unlikely(s->aligned_buf != NULL && ((uintptr_t) buf % 512))) {
-        QEMUBH *bh;
         acb = qemu_aio_get(bs, cb, opaque);
         acb->ret = raw_pread(bs, 512 * sector_num, buf, 512 * nb_sectors);
-        bh = qemu_bh_new(raw_aio_em_cb, acb);
-        qemu_bh_schedule(bh);
+        acb->bh = qemu_bh_new(raw_aio_em_cb, acb);
+        if (!acb->bh)
+            return NULL;
+        qemu_bh_schedule(acb->bh);
         return &acb->common;
     }
 
@@ -641,11 +645,12 @@ static BlockDriverAIOCB *raw_aio_write(BlockDriverState *bs,
     BDRVRawState *s = bs->opaque;
 
     if (unlikely(s->aligned_buf != NULL && ((uintptr_t) buf % 512))) {
-        QEMUBH *bh;
         acb = qemu_aio_get(bs, cb, opaque);
         acb->ret = raw_pwrite(bs, 512 * sector_num, buf, 512 * nb_sectors);
-        bh = qemu_bh_new(raw_aio_em_cb, acb);
-        qemu_bh_schedule(bh);
+        acb->bh = qemu_bh_new(raw_aio_em_cb, acb);
+        if (!acb->bh)
+            return NULL;
+        qemu_bh_schedule(acb->bh);
         return &acb->common;
     }
 
