@@ -85,6 +85,7 @@ void do_migrate_set_speed(const char *value)
 {
     double d;
     char *ptr;
+    FdMigrationState *s;
 
     d = strtod(value, &ptr);
     switch (*ptr) {
@@ -99,6 +100,12 @@ void do_migrate_set_speed(const char *value)
     }
 
     max_throttle = (uint32_t)d;
+    s = migrate_to_fms(current_migration);
+
+    if (s) {
+        qemu_file_set_rate_limit(s->file, max_throttle);
+    }
+    
 }
 
 void do_info_migrate(void)
