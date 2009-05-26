@@ -210,7 +210,7 @@ static int iov_fill(struct iovec *iov, int iovcnt, const void *buf, int count)
 }
 
 static int receive_header(VirtIONet *n, struct iovec *iov, int iovcnt,
-                          const void *buf, size_t size, size_t hdr_len)
+                          const void *buf, size_t size, size_t hdr_len, int raw)
 {
     struct virtio_net_hdr *hdr = iov[0].iov_base;
     int offset = 0;
@@ -220,7 +220,11 @@ static int receive_header(VirtIONet *n, struct iovec *iov, int iovcnt,
 
 #ifdef TAP_VNET_HDR
     if (tap_has_vnet_hdr(n->vc->vlan->first_client)) {
-        memcpy(hdr, buf, sizeof(*hdr));
+        if (!raw) {
+            memcpy(hdr, buf, sizeof(*hdr));
+        } else {
+            memset(hdr, 0, sizeof(*hdr));
+        }
         offset = sizeof(*hdr);
         work_around_broken_dhclient(hdr, buf + offset, size - offset);
     }
@@ -235,7 +239,7 @@ static int receive_header(VirtIONet *n, struct iovec *iov, int iovcnt,
     return offset;
 }
 
-static void virtio_net_receive(void *opaque, const uint8_t *buf, int size)
+static void virtio_net_receive2(void *opaque, const uint8_t *buf, int size, int raw)
 {
     VirtIONet *n = opaque;
     struct virtio_net_hdr_mrg_rxbuf *mhdr = NULL;
@@ -282,7 +286,7 @@ static void virtio_net_receive(void *opaque, const uint8_t *buf, int size)
                 mhdr = (struct virtio_net_hdr_mrg_rxbuf *)sg[0].iov_base;
 
             offset += receive_header(n, sg, elem.in_num,
-                                     buf + offset, size - offset, hdr_len);
+                                     buf + offset, size - offset, hdr_len, raw);
             total += hdr_len;
         }
 
@@ -302,6 +306,16 @@ static void virtio_net_receive(void *opaque, const uint8_t *buf, int size)
 
     virtqueue_flush(n->rx_vq, i);
     virtio_notify(&n->vdev, n->rx_vq);
+}
+
+static void virtio_net_receive(void *opaque, const uint8_t *buf, int size)
+{
+    virtio_net_receive2(opaque, buf, size, 0);
+}
+
+static void virtio_net_receive_raw(void *opaque, const uint8_t *buf, int size)
+{
+    virtio_net_receive2(opaque, buf, size, 1);
 }
 
 /* TX */
@@ -464,6 +478,7 @@ PCIDevice *virtio_net_init(PCIBus *bus, NICInfo *nd, int devfn)
                                  virtio_net_receive, virtio_net_can_receive, n);
     n->vc->cleanup = virtio_net_cleanup;
     n->vc->link_status_changed = virtio_net_set_link_status;
+    n->vc->fd_read_raw = virtio_net_receive_raw;
 
     qemu_format_nic_info_str(n->vc, n->mac);
 
