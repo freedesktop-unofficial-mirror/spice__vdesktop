@@ -110,6 +110,9 @@ void do_info_migrate(void)
         switch (s->get_status(s)) {
         case MIG_STATE_ACTIVE:
             term_printf("active\n");
+            term_printf("transferred ram: %" PRIu64 " kbytes\n", ram_bytes_transferred() >> 10);
+            term_printf("remaining ram: %" PRIu64 " kbytes\n", ram_bytes_remaining() >> 10);
+            term_printf("total ram: %" PRIu64 " kbytes\n", ram_bytes_total() >> 10);
             break;
         case MIG_STATE_COMPLETED:
             term_printf("completed\n");
