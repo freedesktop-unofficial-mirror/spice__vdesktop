@@ -512,6 +512,8 @@ int kvm_arch_qemu_init_env(CPUState *cenv)
     CPUState copy;
     uint32_t i, limit;
 
+    qemu_kvm_load_lapic(cenv);
+
     copy = *cenv;
 
 #ifdef KVM_CPUID_SIGNATURE

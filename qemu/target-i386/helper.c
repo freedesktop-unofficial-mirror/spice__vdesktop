@@ -1642,7 +1642,5 @@ CPUX86State *cpu_x86_init(const char *cpu_model)
 #ifdef USE_KQEMU
     kqemu_init(env);
 #endif
-    if (kvm_enabled())
-        kvm_init_vcpu(env);
     return env;
 }

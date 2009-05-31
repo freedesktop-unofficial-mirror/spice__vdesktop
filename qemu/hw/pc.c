@@ -808,6 +808,12 @@ CPUState *pc_new_cpu(int cpu, const char *cpu_model, int pci_enabled)
         if (pci_enabled) {
             apic_init(env);
         }
+
+    /* kvm needs this to run after the apic is initialized. Otherwise,
+     * it can access invalid state and crash.
+     */
+    if (kvm_enabled())
+        kvm_init_vcpu(env);
 	return env;
 }
 
