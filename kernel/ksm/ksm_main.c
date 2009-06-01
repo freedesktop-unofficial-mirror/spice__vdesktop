@@ -697,7 +697,7 @@ static struct rmap_item *stable_tree_search(struct page *page,
 {
 	struct rb_node *node = root_stable_tree.rb_node;
 	struct tree_item *tree_item;
-	struct rmap_item *found_rmap_item;
+	struct rmap_item *found_rmap_item, *next_rmap_item;
 
 	while (node) {
 		int ret;
@@ -712,9 +712,11 @@ static struct rmap_item *stable_tree_search(struct page *page,
 			      found_rmap_item->address == rmap_item->address)) {
 				if (!is_zapped_item(found_rmap_item, page2))
 					break;
+				next_rmap_item = found_rmap_item->next;
 				remove_rmap_item_from_tree(found_rmap_item);
-			}
-			found_rmap_item = found_rmap_item->next;
+				found_rmap_item = next_rmap_item;
+			} else
+				found_rmap_item = found_rmap_item->next;
 		}
 		if (!found_rmap_item)
 			goto out_didnt_find;
@@ -753,7 +755,7 @@ static int stable_tree_insert(struct page *page,
 
 	while (*new) {
 		int ret;
-		struct rmap_item *insert_rmap_item;
+		struct rmap_item *insert_rmap_item, *next_rmap_item;
 
 		tree_item = rb_entry(*new, struct tree_item, node);
 		BUG_ON(!tree_item);
@@ -768,9 +770,11 @@ static int stable_tree_insert(struct page *page,
 			     insert_rmap_item->address == rmap_item->address)) {
 				if (!is_zapped_item(insert_rmap_item, page2))
 					break;
+				next_rmap_item = insert_rmap_item->next;
 				remove_rmap_item_from_tree(insert_rmap_item);
-			}
-			insert_rmap_item = insert_rmap_item->next;
+				insert_rmap_item = next_rmap_item;
+			} else
+				insert_rmap_item = insert_rmap_item->next;
 		}
 		if (!insert_rmap_item)
 			return 1;
