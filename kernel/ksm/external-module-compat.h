@@ -194,6 +194,18 @@ static int page_wrprotect_one(struct page *page, struct vm_area_struct *vma,
 	if (pte_write(*pte)) {
 		pte_t entry;
 
+
+		flush_cache_page(vma, address, pte_pfn(*pte));
+		/*
+		 * Ok, so after ptep_clear_flush will get called the pte will
+		 * be not present, so gup-fast will become gup-slow and will
+		 * block on the pte_lock, now, the fact that ptep_clear_flush
+		 * will notify all the cpu, is a way to sync it with knowing
+		 * that by the time it return gup-fast is not running in the
+		 * middle, beacuse gup-fast run with irq_disabled.
+		 */
+		entry = ptep_clear_flush(vma, address, pte);
+
 		/*
 		 * this is needed here to balance the mapcount of the page
 		 */
@@ -205,11 +217,10 @@ static int page_wrprotect_one(struct page *page, struct vm_area_struct *vma,
 		 */
 		if ((page_mapcount(page) + count_offset) != page_count(page)) {
 			*odirect_sync = 0;
+			set_pte_at(mm, address, pte, entry);
 			goto out_unlock;
 		}
 
-		flush_cache_page(vma, address, pte_pfn(*pte));
-		entry = ptep_clear_flush(vma, address, pte);
 		entry = pte_wrprotect(entry);
 		set_pte_at(mm, address, pte, entry);
 		BUG_ON(pte_write(entry));
