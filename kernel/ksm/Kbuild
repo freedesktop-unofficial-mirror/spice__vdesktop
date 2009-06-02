@@ -1,2 +1,6 @@
 obj-m := ksm.o
-ksm-objs := ksm_main.o wp_notifier.o
+ksm-objs := ksm_main.o
+ifeq ($(CONFIG_MMU_NOTIFIER),y)
+else
+ksm-objs += wp_notifier.o
+endif
