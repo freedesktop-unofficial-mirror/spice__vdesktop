@@ -140,6 +140,7 @@ int exec_start_incoming_migration(const char *command)
     }
     qemu_announce_self();
     dprintf("successfully loaded vm state\n");
+    term_printf_async(MIGRATION_ASYNC_EVENT, "migration: migration process finished\n");
     vm_start();
     qemu_fclose(f);
     return 0;
