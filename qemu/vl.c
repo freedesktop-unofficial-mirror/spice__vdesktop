@@ -3299,7 +3299,6 @@ static int ram_save_block(QEMUFile *f)
     return found;
 }
 
-static ram_addr_t ram_save_threshold = 10;
 static uint64_t bytes_transferred = 0;
 
 static ram_addr_t ram_save_remaining(void)
@@ -3333,6 +3332,9 @@ uint64_t ram_bytes_total(void)
 static int ram_save_live(QEMUFile *f, int stage, void *opaque)
 {
     ram_addr_t addr;
+    uint64_t bytes_transferred_last;
+    double bwidth = 0;
+    uint64_t expected_time = 0;
 
     if (stage == 1) {
         /* Make sure all dirty bits are set */
@@ -3347,6 +3349,9 @@ static int ram_save_live(QEMUFile *f, int stage, void *opaque)
         qemu_put_be64(f, phys_ram_size | RAM_SAVE_FLAG_MEM_SIZE);
     }
 
+    bytes_transferred_last = bytes_transferred;
+    bwidth = get_clock();
+
     while (!qemu_file_rate_limit(f)) {
         int ret;
 
@@ -3355,6 +3360,14 @@ static int ram_save_live(QEMUFile *f, int stage, void *opaque)
         if (ret == 0) /* no more blocks */
             break;
     }
+
+    bwidth = get_clock() - bwidth;
+    bwidth = (bytes_transferred - bytes_transferred_last) / bwidth;
+
+    /* if we haven't transferred anything this round, force expected_time to a
+     * a very high value, but without crashing */
+    if (bwidth == 0)
+        bwidth = 0.000001;
 
     /* try transferring iterative blocks of memory */
 
@@ -3374,7 +3387,9 @@ static int ram_save_live(QEMUFile *f, int stage, void *opaque)
 
     qemu_put_be64(f, RAM_SAVE_FLAG_EOS);
 
-    return (stage == 2) && (ram_save_remaining() < ram_save_threshold);
+    expected_time = ram_save_remaining() * TARGET_PAGE_SIZE / bwidth;
+
+    return (stage == 2) && (expected_time <= migrate_max_downtime());
 }
 
 static int ram_load_dead(QEMUFile *f, void *opaque)
