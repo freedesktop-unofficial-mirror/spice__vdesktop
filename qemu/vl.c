@@ -4176,6 +4176,7 @@ static void help(int exitcode)
 #endif
            "-name string    set the name of the guest\n"
            "-uuid %%08x-%%04x-%%04x-%%04x-%%012x specify machine UUID\n"
+           "-notify event   enable async-notifications for event\n"
 #ifdef CONFIG_QXL
            "-qxl <num>[,ram=megs]\n"
            "                use 'num' qxl display devices, each with RAM size of 'megs' MB\n"
@@ -4458,6 +4459,7 @@ enum {
 #ifdef MAP_POPULATE
     QEMU_OPTION_mem_prealloc,
 #endif
+    QEMU_OPTION_notify,
 };
 
 typedef struct QEMUOption {
@@ -4607,6 +4609,7 @@ static const QEMUOption qemu_options[] = {
 #ifdef MAP_POPULATE
     { "mem-prealloc", 0, QEMU_OPTION_mem_prealloc },
 #endif
+    { "notify", 1, QEMU_OPTION_notify},
     { NULL },
 };
 
@@ -5847,6 +5850,15 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_incoming:
                 incoming = optarg;
                 break;
+            case QEMU_OPTION_notify: {
+                extern int enable_async_notification(const char *);
+                if (enable_async_notification(optarg)) {
+                    fprintf(stderr, "qemu: failed to enable async event"
+                                    " notification for %s\n", optarg);
+                    exit(1);
+                }
+                break;
+            }
             }
         }
     }

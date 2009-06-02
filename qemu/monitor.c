@@ -243,7 +243,10 @@ static void do_help(const char *name)
     help_cmd(name);
 }
 
-static void do_notify_async_events(char *event_str, char *enable)
+/*
+ * return 0 upon success, non-0 upon failure
+ */
+static int set_notify_async_events(const char *event_str, const char *enable)
 {
     int event;
 
@@ -265,15 +268,32 @@ static void do_notify_async_events(char *event_str, char *enable)
         event = VDI_ASYNC_EVENT;
     else {
         term_printf("notify: invalid event %s\n", event_str);
-        return;
+        return 1;
     }
 
     if (!strcmp(enable, "on"))
         async_printable_events[event] = 1;
     else if (!strcmp(enable, "off"))
         async_printable_events[event] = 0;
-    else
+    else {
         term_printf("notify: invalid argument\n");
+        return 2;
+    }
+    return 0;
+}
+
+static void do_notify_async_events(char *event_str, char *enable)
+{
+    set_notify_async_events(event_str, enable);
+}
+
+/*
+ * Enables async notification for event_str event.
+ * Returns 0 on success, non-0 otherwise.
+ */
+int enable_async_notification(const char *event_str)
+{
+    return set_notify_async_events(event_str, "on");
 }
 
 static void do_commit(const char *device)
