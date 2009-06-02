@@ -1626,6 +1626,8 @@ static term_cmd_t term_cmds[] = {
       "", "cancel the current VM migration" },
     { "migrate_set_speed", "s", do_migrate_set_speed,
       "value", "set maximum speed (in bytes) for migrations" },
+    { "migrate_set_downtime", "s", do_migrate_set_downtime,
+      "value", "set maximum tolerated downtime (in seconds) for migrations" },
     { "balloon", "i", do_balloon,
       "target", "request VM to change it's memory allocation (in MB)" },
     { "set_link", "ss", do_set_link, "name [up|down]" },
