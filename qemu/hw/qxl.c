@@ -90,12 +90,12 @@ typedef struct QXLState {
     uint32_t io_base;
     QXLRom *rom;
     QXLModes *modes;
-    uint32_t rom_offset;
+    uint64_t rom_offset;
     uint32_t rom_size;
 
     uint8_t *ram_start;
     QXLRam *ram;
-    uint32_t ram_offset;
+    uint64_t ram_offset;
     uint32_t ram_size;
     uint64_t ram_phys_addr;
 
@@ -145,7 +145,7 @@ struct PCIQXLDevice {
 typedef struct PCIVDIPortDevice {
     PCIDevice pci_dev;
     uint32_t io_base;
-    uint32_t ram_offset;
+    uint64_t ram_offset;
     uint32_t ram_size;
     VDIPortRam *ram;
     uint32_t connected;
