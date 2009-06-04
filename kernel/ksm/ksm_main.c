@@ -286,10 +286,11 @@ static void remove_rmap_item_from_tree(struct rmap_item *rmap_item)
 	 		if (!rmap_item->next && !rmap_item->prev) {
 				rb_erase(&tree_item->node, &root_stable_tree);
 				free_tree_item(tree_item);
-			} else if (!rmap_item->prev)
+			} else if (!rmap_item->prev) {
+				BUG_ON(tree_item->rmap_item != rmap_item);
 				tree_item->rmap_item = rmap_item->next;
-			else
-				tree_item->rmap_item = rmap_item->prev;
+			} else
+				BUG_ON(tree_item->rmap_item == rmap_item);
 		} else if (!rmap_item->stable_tree)
 			free_tree_item(tree_item);
 	}
