@@ -252,6 +252,9 @@ void kvm_queue_smp_call_function(int cpu)
 	schedule_work(&kvm_kick->work);
 }
 
+#if (!defined(RHEL_RELEASE_CODE) || \
+	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,4) || \
+	!defined(CONFIG_X86_64))
 void kvm_smp_send_reschedule(int cpu)
 {
 	if (irqs_disabled()) {
@@ -260,6 +263,8 @@ void kvm_smp_send_reschedule(int cpu)
 	}
 	smp_call_function_single(cpu, vcpu_kick_intr, NULL, 0);
 }
+#endif
+
 #endif
 
 /* manually export hrtimer_init/start/cancel */

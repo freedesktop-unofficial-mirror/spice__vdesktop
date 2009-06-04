@@ -226,12 +226,17 @@ int kvm_smp_call_function_mask(cpumask_t mask, void (*func) (void *info),
 
 #define smp_call_function_mask kvm_smp_call_function_mask
 
+#if (!defined(RHEL_RELEASE_CODE) || \
+	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,4) || \
+	!defined(CONFIG_X86_64))
+
 void kvm_smp_send_reschedule(int cpu);
 
 #else
 
 #define kvm_smp_send_reschedule smp_send_reschedule
 
+#endif
 #endif
 
 /* empty_zero_page isn't exported in all kernels */
@@ -572,7 +577,11 @@ struct rchan *kvm_relay_open(const char *base_filename,
 
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27) && \
+	(!defined(RHEL_RELEASE_CODE) || \
+	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,4) || \
+	!defined(CONFIG_X86_64)))
+
 static inline int kvm_get_user_pages_fast(unsigned long start, int nr_pages,
 				      int write, struct page **pages)
 {
@@ -585,6 +594,9 @@ static inline int kvm_get_user_pages_fast(unsigned long start, int nr_pages,
 
 	return npages;
 }
+#else
+
+#define kvm_get_user_pages_fast get_user_pages_fast
 
 #endif
 
