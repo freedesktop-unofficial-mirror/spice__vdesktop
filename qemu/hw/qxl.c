@@ -1784,9 +1784,9 @@ static void vdi_port_reset(PCIVDIPortDevice *d)
 static void vdi_port_reset_handler(void *opaque)
 {
     PCIVDIPortDevice *d = (PCIVDIPortDevice *)opaque;
-#ifdef CONFIG_SPICE
-    vdi_port_unregister_interface(d);
-#endif
+    if (d->connected) {
+        vdi_port_dev_disconnect(d);
+    }
     vdi_port_reset(d);
 }
 
