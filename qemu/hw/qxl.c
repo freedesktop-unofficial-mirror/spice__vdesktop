@@ -1665,7 +1665,7 @@ static void regitser_interface(PCIQXLDevice *d)
     interface->vd_interface.base.major_version = VD_INTERFACE_QXL_MAJOR;
     interface->vd_interface.base.minor_version = VD_INTERFACE_QXL_MINOR;
 
-    interface->vd_interface.pci_vendor = QUMRANET_PCI_VENDOR_ID;
+    interface->vd_interface.pci_vendor = REDHAT_PCI_VENDOR_ID;
     interface->vd_interface.pci_id = QXL_DEVICE_ID;
     interface->vd_interface.pci_revision = QXL_REVISION;
 
@@ -1851,7 +1851,7 @@ static void vdi_port_init(PCIBus *bus, uint8_t *ram, unsigned long ram_offset,
     }
     pci_conf = (PCIConf *)d->pci_dev.config;
 
-    pci_conf->vendor_ID = QUMRANET_PCI_VENDOR_ID;
+    pci_conf->vendor_ID = REDHAT_PCI_VENDOR_ID;
     pci_conf->device_ID = VDI_PORT_DEVICE_ID;
     pci_conf->revision = VDI_PORT_REVISION;
     pci_conf->class_base = PCI_CLASS_COM_CONTROLLER;
@@ -1914,7 +1914,7 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
 
     pci_conf = (PCIConf *)d->pci_dev.config;
 
-    pci_conf->vendor_ID = QUMRANET_PCI_VENDOR_ID;
+    pci_conf->vendor_ID = REDHAT_PCI_VENDOR_ID;
     pci_conf->device_ID = QXL_DEVICE_ID;
     pci_conf->revision = QXL_REVISION;
     pci_conf->class_base = PCI_CLASS_DISPLAY;

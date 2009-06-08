@@ -19,9 +19,9 @@
 #define mb() __asm {lock add [esp], 0}
 #endif
 
-#define QUMRANET_PCI_VENDOR_ID 0x1af4
-#define QXL_DEVICE_ID 0x0100 /* 0x100-0x1ff reserved for spice */
-#define QXL_REVISION 0x11
+#define REDHAT_PCI_VENDOR_ID 0x1b36
+#define QXL_DEVICE_ID 0x0100 /* 0x100-0x11f reserved for spice */
+#define QXL_REVISION 0x01
 
 #define QXL_ROM_MAGIC (*(UINT32*)"QXRO")
 #define QXL_RAM_MAGIC (*(UINT32*)"QXRA")
@@ -294,7 +294,7 @@ typedef struct ATTR_PACKED QXLImage {
 } QXLImage;
 
 
-#define VDI_PORT_DEVICE_ID 0x0121
+#define VDI_PORT_DEVICE_ID 0x0105
 #define VDI_PORT_REVISION 0x01
 
 #define VDI_PORT_INTERRUPT (1 << 0)
