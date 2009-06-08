@@ -248,7 +248,16 @@ static void do_help(const char *name)
  */
 static int set_notify_async_events(const char *event_str, const char *enable)
 {
-    int event;
+    int event, val;
+
+    if (!strcmp(enable, "on"))
+        val = 1;
+    else if (!strcmp(enable, "off"))
+        val = 0;
+    else {
+        term_printf("notify: invalid argument\n");
+        return 1;
+    }
 
     if (!strcmp(event_str, "vnc"))
         event = VNC_ASYNC_EVENT;
@@ -266,19 +275,18 @@ static int set_notify_async_events(const char *event_str, const char *enable)
         event = WATERMARK_ASYNC_EVENT;
     else if (!strcmp(event_str, "vdi"))
         event = VDI_ASYNC_EVENT;
+    else if (!strcmp(event_str, "all")) {
+        for (event=0; event<ARRAY_SIZE(async_printable_events); event++)
+            async_printable_events[event] = val;
+        return 0;
+    }
     else {
         term_printf("notify: invalid event %s\n", event_str);
         return 1;
     }
 
-    if (!strcmp(enable, "on"))
-        async_printable_events[event] = 1;
-    else if (!strcmp(enable, "off"))
-        async_printable_events[event] = 0;
-    else {
-        term_printf("notify: invalid argument\n");
-        return 2;
-    }
+    async_printable_events[event] = val;
+
     return 0;
 }
 
@@ -1670,7 +1678,7 @@ static term_cmd_t term_cmds[] = {
     { "set_qxl_log_level", "i", qxl_do_set_log_level, "", "set qxl log level" },
 #endif
     { "notify", "ss", do_notify_async_events,
-      "vnc|rtc|migration|reboot|shutdown|vmstop|watermark|vdi on|off",
+      "vnc|rtc|migration|reboot|shutdown|vmstop|watermark|vdi|all on|off",
       "enable / disable printing of notifications for the specified event" },
     { "block_set_watermark", "Bi", do_block_set_watermark,
       "block-device offset(in MB)",
