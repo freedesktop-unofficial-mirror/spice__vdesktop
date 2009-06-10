@@ -152,12 +152,18 @@ ioport_map(PCIDevice *pci_dev, int region_num, uint32_t addr,
 }
 
 static void
+update_irqs(E1000State *s)
+{
+    qemu_set_irq(s->dev.irq[0], (s->mac_reg[IMS] & s->mac_reg[ICR]) != 0);
+}
+
+static void
 set_interrupt_cause(E1000State *s, int index, uint32_t val)
 {
     if (val)
         val |= E1000_ICR_INT_ASSERTED;
     s->mac_reg[ICR] = val;
-    qemu_set_irq(s->dev.irq[0], (s->mac_reg[IMS] & s->mac_reg[ICR]) != 0);
+    update_irqs(s);
 }
 
 static void
@@ -965,6 +971,7 @@ nic_load(QEMUFile *f, void *opaque, int version_id)
         for (j = 0; j < mac_regarraystosave[i].size; j++)
             qemu_get_be32s(f,
                            s->mac_reg + mac_regarraystosave[i].array0 + j);
+    update_irqs(s);
     return 0;
 }
 
@@ -1043,6 +1050,19 @@ e1000_cleanup(VLANClientState *vc)
     unregister_savevm("e1000", d);
 }
 
+static void e1000_reset(void *opaque)
+{
+    E1000State *d = opaque;
+
+    memset(d->phy_reg, 0, sizeof d->phy_reg);
+    memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
+    memset(d->mac_reg, 0, sizeof d->mac_reg);
+    memmove(d->mac_reg, mac_reg_init, sizeof mac_reg_init);
+    d->rxbuf_min_shift = 1;
+    memset(&d->tx, 0, sizeof d->tx);
+    update_irqs(d);
+}
+
 static int
 pci_e1000_uninit(PCIDevice *dev)
 {
@@ -1100,12 +1120,6 @@ pci_e1000_init(PCIBus *bus, NICInfo *nd, int devfn)
     checksum = (uint16_t) EEPROM_SUM - checksum;
     d->eeprom_data[EEPROM_CHECKSUM_REG] = checksum;
 
-    memset(d->phy_reg, 0, sizeof d->phy_reg);
-    memmove(d->phy_reg, phy_reg_init, sizeof phy_reg_init);
-    memset(d->mac_reg, 0, sizeof d->mac_reg);
-    memmove(d->mac_reg, mac_reg_init, sizeof mac_reg_init);
-    d->rxbuf_min_shift = 1;
-    memset(&d->tx, 0, sizeof d->tx);
 
     d->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  e1000_receive, e1000_can_receive, d);
@@ -1116,6 +1130,9 @@ pci_e1000_init(PCIBus *bus, NICInfo *nd, int devfn)
 
     register_savevm(info_str, -1, 2, nic_save, nic_load, d);
     d->dev.unregister = pci_e1000_uninit;
+
+    qemu_register_reset(e1000_reset, d);
+    e1000_reset(d);
 
     return (PCIDevice *)d;
 }
