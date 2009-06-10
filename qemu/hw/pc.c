@@ -34,6 +34,7 @@
 #include "console.h"
 #include "fw_cfg.h"
 #include "virtio-blk.h"
+#include "virtio-balloon.h"
 #include "hpet_emul.h"
 #include "device-assignment.h"
 #include "smbios.h"
@@ -1206,6 +1207,10 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
 
 	extboot_init(info->bdrv, 1);
     }
+
+    /* Add virtio balloon device */
+    if (pci_enabled)
+        virtio_balloon_init(pci_bus);
 
 #ifdef USE_KVM_DEVICE_ASSIGNMENT
     if (kvm_enabled()) {
