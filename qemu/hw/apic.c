@@ -1315,7 +1315,6 @@ IOAPICState *ioapic_init(void)
     if (!s)
         return NULL;
     ioapic_reset(s);
-    s->id = last_apic_id++;
 
     io_memory = cpu_register_io_memory(0, ioapic_mem_read,
                                        ioapic_mem_write, s);
