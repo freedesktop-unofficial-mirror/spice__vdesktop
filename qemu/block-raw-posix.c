@@ -944,16 +944,21 @@ static int hdev_open(BlockDriverState *bs, const char *filename, int flags)
 
     s->type = FTYPE_FILE;
 #if defined(__linux__)
-    if (strstart(filename, "/dev/cd", NULL)) {
+    if (strstart(filename, "/dev/cd", NULL) ||
+        bs->type == BDRV_TYPE_CDROM) {
         /* open will not fail even if no CD is inserted */
         open_flags |= O_NONBLOCK;
         s->type = FTYPE_CD;
-    } else if (strstart(filename, "/dev/fd", NULL)) {
+    }
+    if (strstart(filename, "/dev/fd", NULL) ||
+        bs->type == BDRV_TYPE_FLOPPY) {
         s->type = FTYPE_FD;
         s->fd_open_flags = open_flags;
         /* open will not fail even if no floppy is inserted */
         open_flags |= O_NONBLOCK;
-    } else if (strstart(filename, "/dev/sg", NULL)) {
+    }
+    if (s->type = FTYPE_FILE &&
+        strstart(filename, "/dev/sg", NULL)) {
         bs->sg = 1;
     }
 #endif
