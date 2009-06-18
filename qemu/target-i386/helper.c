@@ -125,7 +125,8 @@ static x86_def_t x86_defs[] = {
         .vendor2 = CPUID_VENDOR_AMD_2,
         .vendor3 = CPUID_VENDOR_AMD_3,
         .family = 6,
-        .model = 2,
+	/* AMD Duron || PII Intel with sep capbility - P6 has no sep */
+        .model = 3,
         .stepping = 3,
         .features = PPRO_FEATURES | 
         /* these features are needed for Win64 and aren't fully implemented */
