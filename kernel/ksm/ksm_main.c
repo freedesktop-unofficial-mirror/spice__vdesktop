@@ -1108,7 +1108,7 @@ static int ksm_scan_start(struct ksm_scan *ksm_scan, int scan_npages)
 
 	scan_update_old_index(ksm_scan);
 
-	while (scan_npages > 0) {
+	while (scan_npages > 0 && likely(!freezing(current))) {
 		ret = scan_get_next_index(ksm_scan, 1);
 		if (ret)
 			goto out;
@@ -1368,6 +1368,7 @@ int kthread_ksm_scan_thread(void *nothing)
 			wait_event_interruptible(kthread_wait,
 					ksmd_flags & ksm_control_flags_run ||
 					kthread_should_stop());
+		try_to_freeze();
 	}
 	return 0;
 }
