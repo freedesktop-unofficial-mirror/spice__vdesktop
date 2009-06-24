@@ -2694,6 +2694,7 @@ int vnc_display_open(DisplayState *ds, const char *display)
         } else {
             free(vs->display);
             vs->display = dpy;
+            socket_set_nonblock(vs->lsock);
         }
     }
     return qemu_set_fd_handler2(vs->lsock, NULL, vnc_listen_read, NULL, vs);
