@@ -1209,7 +1209,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
     }
 
     /* Add virtio balloon device */
-    if (pci_enabled)
+    if (pci_enabled && virtio_balloon)
         virtio_balloon_init(pci_bus);
 
 #ifdef USE_KVM_DEVICE_ASSIGNMENT

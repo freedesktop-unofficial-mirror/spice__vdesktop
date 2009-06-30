@@ -235,6 +235,7 @@ int smp_cpus = 1;
 const char *vnc_display;
 int acpi_enabled = 1;
 int no_hpet = 0;
+int virtio_balloon = 1;
 int fd_bootchk = 1;
 int no_reboot = 0;
 int no_shutdown = 0;
@@ -4282,6 +4283,9 @@ static void help(int exitcode)
 #ifdef TARGET_I386
            "-no-acpi        disable ACPI\n"
            "-no-hpet        disable HPET\n"
+           "-balloon none   disable balloon device\n"
+           "-balloon virtio\n"
+           "                enable virtio balloon device (default)\n"
            "-acpitable [sig=str][,rev=n][,oem_id=str][,oem_table_id=str][,oem_rev=n][,asl_compiler_id=str][,asl_compiler_rev=n][,data=file1[:file2]...]\n"
            "                ACPI table description\n"
            "-smbios file=binary\n"
@@ -4417,6 +4421,7 @@ enum {
     QEMU_OPTION_vnc,
     QEMU_OPTION_no_acpi,
     QEMU_OPTION_no_hpet,
+    QEMU_OPTION_balloon,
     QEMU_OPTION_acpitable,
     QEMU_OPTION_smbios,
     QEMU_OPTION_curses,
@@ -4570,6 +4575,7 @@ static const QEMUOption qemu_options[] = {
     { "usb", 0, QEMU_OPTION_usb },
     { "no-acpi", 0, QEMU_OPTION_no_acpi },
     { "no-hpet", 0, QEMU_OPTION_no_hpet },
+    { "balloon", HAS_ARG, QEMU_OPTION_balloon },
     { "acpitable", HAS_ARG, QEMU_OPTION_acpitable },
     { "smbios", HAS_ARG, QEMU_OPTION_smbios },
     { "no-reboot", 0, QEMU_OPTION_no_reboot },
@@ -4822,6 +4828,20 @@ static void select_vgahw (const char *p)
         opts = nextopt;
     }
 }
+
+#ifdef TARGET_I386
+static int balloon_parse(const char *arg)
+{
+    if (!strcmp(arg, "none")) {
+        virtio_balloon = 0;
+    } else if (!strcmp(arg, "virtio")) {
+        virtio_balloon = 1;
+    } else {
+        return -1;
+    }
+    return 0;
+}
+#endif
 
 #ifdef _WIN32
 static BOOL WINAPI qemu_ctrl_handler(DWORD type)
@@ -5711,6 +5731,12 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_no_hpet:
                 no_hpet = 1;
+                break;
+            case QEMU_OPTION_balloon:
+                if (balloon_parse(optarg) < 0) {
+                    fprintf(stderr, "Unknown -balloon argument %s\n", optarg);
+                    exit(1);
+                }
                 break;
             case QEMU_OPTION_no_reboot:
                 no_reboot = 1;
