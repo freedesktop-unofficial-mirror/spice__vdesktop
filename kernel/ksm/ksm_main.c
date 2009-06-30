@@ -354,9 +354,11 @@ static void remove_mm_from_hash_and_tree(struct mm_struct *mm)
 	BUG_ON(!slot);
 
 	root_unstable_tree = RB_ROOT;
-	for (pages_count = 0; pages_count < slot->npages; ++pages_count)
+	for (pages_count = 0; pages_count < slot->npages; ++pages_count) {
+		cond_resched();
 		remove_page_from_tree(mm, slot->addr +
 				      pages_count * PAGE_SIZE);
+	}
 	list_del(&slot->link);
 }
 
