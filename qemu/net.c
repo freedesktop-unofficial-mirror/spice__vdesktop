@@ -496,7 +496,7 @@ ssize_t qemu_sendv_packet(VLANClientState *vc1, const struct iovec *iov,
 {
     VLANState *vlan = vc1->vlan;
     VLANClientState *vc;
-    ssize_t max_len = 0;
+    ssize_t max_len = -EAGAIN;
 
     if (vc1->link_down)
         return calc_iov_length(iov, iovcnt);
@@ -752,7 +752,54 @@ typedef struct TAPState {
     int size;
     unsigned int has_vnet_hdr : 1;
     unsigned int using_vnet_hdr : 1;
+    unsigned int read_poll : 1;
+    unsigned int write_poll : 1;
 } TAPState;
+
+static int tap_can_send(void *opaque);
+static void tap_send(void *opaque);
+static void tap_writable(void *opaque);
+
+static void tap_update_fd_handler(TAPState *s)
+{
+    qemu_set_fd_handler2(s->fd,
+                         s->read_poll  ? tap_can_send : NULL,
+                         s->read_poll  ? tap_send     : NULL,
+                         s->write_poll ? tap_writable : NULL,
+                         s);
+}
+
+static void tap_read_poll(TAPState *s, int enable)
+{
+    s->read_poll = !!enable;
+    tap_update_fd_handler(s);
+}
+
+static void tap_write_poll(TAPState *s, int enable)
+{
+    s->write_poll = !!enable;
+    tap_update_fd_handler(s);
+}
+
+static void tap_writable(void *opaque)
+{
+    TAPState *s = opaque;
+    VLANClientState *vc;
+
+    tap_write_poll(s, 0);
+
+    for (vc = s->vc->vlan->first_client; vc; vc = vc->next) {
+        if (vc == s->vc) {
+            continue;
+        }
+
+        if (!vc->fd_writable) {
+            continue;
+        }
+
+        vc->fd_writable(vc->opaque);
+    }
+}
 
 #ifdef HAVE_IOVEC
 static ssize_t tap_receive_iov(void *opaque, const struct iovec *iov,
@@ -763,7 +810,12 @@ static ssize_t tap_receive_iov(void *opaque, const struct iovec *iov,
 
     do {
         len = writev(s->fd, iov, iovcnt);
-    } while (len == -1 && (errno == EINTR || errno == EAGAIN));
+    } while (len == -1 && errno == EINTR);
+
+    if (len == -1 && errno == EAGAIN) {
+        tap_write_poll(s, 1);
+        return -EAGAIN;
+    }
 
     return len;
 }
@@ -956,6 +1008,39 @@ static void tap_set_offload(VLANClientState *vc, int csum, int tso4, int tso6,
 }
 #endif /* TUNSETOFFLOAD */
 
+#ifdef TUNSETSNDBUF
+/* sndbuf should be set to a value lower than the tx queue
+ * capacity of any destination network interface.
+ * Ethernet NICs generally have txqueuelen=1000, so 1Mb is
+ * a good default, given a 1500 byte MTU.
+ */
+#define TAP_DEFAULT_SNDBUF 1024*1024
+
+static void tap_set_sndbuf(TAPState *s, const char *sndbuf_str)
+{
+    int sndbuf = TAP_DEFAULT_SNDBUF;
+
+    if (sndbuf_str) {
+        sndbuf = atoi(sndbuf_str);
+    }
+
+    if (!sndbuf) {
+        sndbuf = INT_MAX;
+    }
+
+    if (ioctl(s->fd, TUNSETSNDBUF, &sndbuf) == -1) {
+        fprintf(stderr, "TUNSETSNDBUF ioctl failed: %s\n", strerror(errno));
+    }
+}
+#else
+static void tap_set_sndbuf(TAPState *s, const char *sndbuf_str)
+{
+    if (sndbuf_str) {
+        fprintf(stderr, "No '-net tap,sndbuf=<nbytes>' support available\n");
+    }
+}
+#endif /* TUNSETSNDBUF */
+
 static int launch_script(const char *setup_script, const char *ifname, int fd);
 
 static void tap_cleanup(VLANClientState *vc)
@@ -965,7 +1050,8 @@ static void tap_cleanup(VLANClientState *vc)
     if (s->down_script[0])
         launch_script(s->down_script, s->down_script_arg, s->fd);
 
-    qemu_set_fd_handler(s->fd, NULL, NULL, NULL);
+    tap_read_poll(s, 0);
+    tap_write_poll(s, 0);
     close(s->fd);
     qemu_free(s);
 }
@@ -994,7 +1080,7 @@ static TAPState *net_tap_fd_init(VLANState *vlan,
 #ifdef TUNSETOFFLOAD
     s->vc->set_offload = tap_set_offload;
 #endif
-    qemu_set_fd_handler2(s->fd, tap_can_send, tap_send, NULL, s);
+    tap_read_poll(s, 1);
     snprintf(s->vc->info_str, sizeof(s->vc->info_str), "fd=%d", fd);
     return s;
 }
@@ -1238,9 +1324,9 @@ static int launch_script(const char *setup_script, const char *ifname, int fd)
     return 0;
 }
 
-static int net_tap_init(VLANState *vlan, const char *model,
-                        const char *name, const char *ifname1,
-                        const char *setup_script, const char *down_script)
+static TAPState *net_tap_init(VLANState *vlan, const char *model,
+                              const char *name, const char *ifname1,
+                              const char *setup_script, const char *down_script)
 {
     TAPState *s;
     int fd;
@@ -1254,17 +1340,17 @@ static int net_tap_init(VLANState *vlan, const char *model,
     vnet_hdr = 0;
     TFR(fd = tap_open(ifname, sizeof(ifname), &vnet_hdr));
     if (fd < 0)
-        return -1;
+        return NULL;
 
     if (!setup_script || !strcmp(setup_script, "no"))
         setup_script = "";
     if (setup_script[0] != '\0') {
 	if (launch_script(setup_script, ifname, fd))
-	    return -1;
+	    return NULL;
     }
     s = net_tap_fd_init(vlan, model, name, fd, vnet_hdr);
     if (!s)
-        return -1;
+        return NULL;
 
     snprintf(s->vc->info_str, sizeof(s->vc->info_str),
              "ifname=%s,script=%s,downscript=%s",
@@ -1273,7 +1359,7 @@ static int net_tap_init(VLANState *vlan, const char *model,
         snprintf(s->down_script, sizeof(s->down_script), "%s", down_script);
         snprintf(s->down_script_arg, sizeof(s->down_script_arg), "%s", ifname);
     }
-    return 0;
+    return s;
 }
 
 #endif /* !_WIN32 */
@@ -1922,15 +2008,13 @@ int net_client_init(const char *device, const char *p)
     if (!strcmp(device, "tap")) {
         char ifname[64];
         char setup_script[1024], down_script[1024];
+        TAPState *s;
         int fd;
         vlan->nb_host_devs++;
         if (get_param_value(buf, sizeof(buf), "fd", p) > 0) {
             fd = strtol(buf, NULL, 0);
             fcntl(fd, F_SETFL, O_NONBLOCK);
-            ret = -1;
-                if (net_tap_fd_init(vlan, device, name, fd,
-                                    tap_probe_vnet_hdr(fd)))
-                ret = 0;
+            s = net_tap_fd_init(vlan, device, name, fd, tap_probe_vnet_hdr(fd));
         } else {
             if (get_param_value(ifname, sizeof(ifname), "ifname", p) <= 0) {
                 ifname[0] = '\0';
@@ -1941,7 +2025,17 @@ int net_client_init(const char *device, const char *p)
             if (get_param_value(down_script, sizeof(down_script), "downscript", p) == 0) {
                 pstrcpy(down_script, sizeof(down_script), DEFAULT_NETWORK_DOWN_SCRIPT);
             }
-            ret = net_tap_init(vlan, device, name, ifname, setup_script, down_script);
+            s = net_tap_init(vlan, device, name, ifname, setup_script, down_script);
+        }
+        if (s != NULL) {
+            const char *sndbuf_str = NULL;
+            if (get_param_value(buf, sizeof(buf), "sndbuf", p)) {
+                sndbuf_str = buf;
+            }
+            tap_set_sndbuf(s, sndbuf_str);
+            ret = 0;
+        } else {
+            ret = -1;
         }
     } else
 #endif

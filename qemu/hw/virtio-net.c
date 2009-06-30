@@ -31,6 +31,12 @@ typedef struct VirtIONet
     VLANClientState *vc;
     QEMUTimer *tx_timer;
     int tx_timer_active;
+    struct {
+        VirtQueueElement elem;
+        ssize_t len;
+        struct iovec *out_sg;
+        unsigned int out_num;
+    } tx_queue;
     int mergeable_rx_bufs;
 } VirtIONet;
 
@@ -331,11 +337,17 @@ static void virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq)
     if (!(n->vdev.status & VIRTIO_CONFIG_S_DRIVER_OK))
         return;
 
+    if (n->tx_queue.out_num) {
+        virtio_queue_set_notification(n->tx_vq, 0);
+        return;
+    }
+
     while (virtqueue_pop(vq, &elem)) {
         ssize_t len = 0;
         unsigned int out_num = elem.out_num;
         struct iovec *out_sg = &elem.out_sg[0];
         unsigned hdr_len;
+        int ret;
 
         /* hdr_len refers to the header received from the guest */
         hdr_len = n->mergeable_rx_bufs ?
@@ -359,9 +371,17 @@ static void virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq)
             len += hdr_len;
         }
 
-        len += qemu_sendv_packet(n->vc, out_sg, out_num);
+        ret = qemu_sendv_packet(n->vc, out_sg, out_num);
+        if (ret == -EAGAIN) {
+            virtio_queue_set_notification(n->tx_vq, 0);
+            n->tx_queue.elem = elem;
+            n->tx_queue.len = len;
+            n->tx_queue.out_sg = out_sg;
+            n->tx_queue.out_num = out_num;
+            return;
+        }
 
-        virtqueue_push(vq, &elem, len);
+        virtqueue_push(vq, &elem, len + ret);
         virtio_notify(&n->vdev, vq);
     }
 }
@@ -392,6 +412,28 @@ static void virtio_net_tx_timer(void *opaque)
     /* Just in case the driver is not ready on more */
     if (!(n->vdev.status & VIRTIO_CONFIG_S_DRIVER_OK))
         return;
+
+    virtio_queue_set_notification(n->tx_vq, 1);
+    virtio_net_flush_tx(n, n->tx_vq);
+}
+
+static void virtio_net_retry_tx(void *opaque)
+{
+    VirtIONet *n = opaque;
+
+    if (n->tx_queue.out_num) {
+        int ret;
+
+        ret = qemu_sendv_packet(n->vc, n->tx_queue.out_sg, n->tx_queue.out_num);
+        if (ret == -EAGAIN) {
+            return;
+        }
+
+        virtqueue_push(n->tx_vq, &n->tx_queue.elem, n->tx_queue.len + ret);
+        virtio_notify(&n->vdev, n->tx_vq);
+
+        n->tx_queue.out_num = 0;
+    }
 
     virtio_queue_set_notification(n->tx_vq, 1);
     virtio_net_flush_tx(n, n->tx_vq);
@@ -480,6 +522,7 @@ PCIDevice *virtio_net_init(PCIBus *bus, NICInfo *nd, int devfn)
     n->vc->cleanup = virtio_net_cleanup;
     n->vc->link_status_changed = virtio_net_set_link_status;
     n->vc->fd_read_raw = virtio_net_receive_raw;
+    n->vc->fd_writable = virtio_net_retry_tx;
 
     qemu_format_nic_info_str(n->vc, n->mac);
 

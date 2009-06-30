@@ -20,6 +20,7 @@ struct VLANClientState {
     /* Packets may still be sent if this returns zero.  It's used to
        rate-limit the slirp code.  */
     IOCanRWHandler *fd_can_read;
+    IOHandler *fd_writable;
     NetCleanup *cleanup;
     LinkStatusChanged *link_status_changed;
     int link_down;
