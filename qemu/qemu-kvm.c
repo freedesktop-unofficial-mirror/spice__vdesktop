@@ -606,6 +606,7 @@ int kvm_main_loop(void)
 #ifdef CONFIG_GDBSTUB
 	else if (kvm_debug_cpu_requested) {
 	    gdb_set_stop_cpu(kvm_debug_cpu_requested);
+	    strncpy(vm_stop_reason, "gdbstub", STOP_REASON_LEN);
 	    vm_stop(EXCP_DEBUG);
 	    kvm_debug_cpu_requested = NULL;
 	}

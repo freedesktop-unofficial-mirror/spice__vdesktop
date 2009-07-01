@@ -826,6 +826,7 @@ int qemu_savevm_state(QEMUFile *f)
     int ret;
 
     saved_vm_running = vm_running;
+    strncpy(vm_stop_reason, "savevm", STOP_REASON_LEN);
     vm_stop(0);
 
     bdrv_flush_all();
@@ -1094,6 +1095,7 @@ void do_savevm(const char *name)
     qemu_aio_flush();
 
     saved_vm_running = vm_running;
+    strncpy(vm_stop_reason, "savevm", STOP_REASON_LEN);
     vm_stop(0);
 
     must_delete = 0;
@@ -1190,6 +1192,7 @@ void do_loadvm(const char *name)
     qemu_aio_flush();
 
     saved_vm_running = vm_running;
+    strncpy(vm_stop_reason, "savevm", STOP_REASON_LEN);
     vm_stop(0);
 
     for(i = 0; i <= nb_drives; i++) {

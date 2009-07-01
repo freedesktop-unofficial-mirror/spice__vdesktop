@@ -229,9 +229,10 @@ static int scsi_handle_write_error(SCSIRequest *r, int error)
             || action == BLOCK_ERR_STOP_ANY) {
         r->status |= SCSI_REQ_STATUS_RETRY;
         vm_stop(0);
-        term_printf_async(VMSTOP_ASYNC_EVENT,
-                "VM is stopped due to disk write error: %s: %s\n",
-		bdrv_get_device_name(r->dev->bdrv), strerror(error));
+	snprintf(vm_stop_reason, STOP_REASON_LEN,
+			"VM is stopped due to disk write error: %s: %s",
+			bdrv_get_device_name(r->dev->bdrv), strerror(error));
+        term_printf_async(VMSTOP_ASYNC_EVENT, "%s\n", vm_stop_reason);
     } else {
         scsi_command_complete(r, STATUS_CHECK_CONDITION,
                 SENSE_HARDWARE_ERROR);

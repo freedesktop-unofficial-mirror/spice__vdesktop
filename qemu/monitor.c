@@ -610,6 +610,7 @@ static void do_log(const char *items)
 
 static void do_stop(void)
 {
+    strncpy(vm_stop_reason, "monitor command", STOP_REASON_LEN);
     vm_stop(EXCP_INTERRUPT);
 }
 
@@ -1569,6 +1570,11 @@ static void do_info_balloon(void)
         term_printf("balloon: actual=%d\n", (int)(actual >> 20));
 }
 
+static void do_info_stop_reason(void)
+{
+    term_printf("%s\n", vm_stop_reason);
+}
+
 static term_cmd_t term_cmds[] = {
     { "help|?", "s?", do_help,
       "[cmd]", "show the help" },
@@ -1756,6 +1762,8 @@ static term_cmd_t info_cmds[] = {
     { "migrate", "", do_info_migrate, "", "show migration status" },
     { "balloon", "", do_info_balloon,
       "", "show balloon information" },
+    { "stop-reason", "", do_info_stop_reason,
+      "", "show vm stop reason (valid only if vm is stopped)" },
     { NULL, NULL, },
 };
 

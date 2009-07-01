@@ -3685,6 +3685,8 @@ void vm_start(void)
     }
 }
 
+char vm_stop_reason[STOP_REASON_LEN];
+
 void vm_stop(int reason)
 {
     if (vm_running) {

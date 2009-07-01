@@ -132,6 +132,7 @@ int exec_start_incoming_migration(const char *command)
         dprintf("Unable to apply qemu wrapper to popen file\n");
         return -errno;
     }
+    strncpy(vm_stop_reason, "incomming migration", STOP_REASON_LEN);
     vm_stop(0); /* just in case */
     ret = qemu_loadvm_state(f);
     if (ret < 0) {

@@ -1940,6 +1940,7 @@ void gdb_do_syscall(gdb_syscall_complete_cb cb, const char *fmt, ...)
     gdb_current_syscall_cb = cb;
     s->state = RS_SYSCALL;
 #ifndef CONFIG_USER_ONLY
+    strncpy(vm_stop_reason, "gdbstab", STOP_REASON_LEN);
     vm_stop(EXCP_DEBUG);
 #endif
     s->state = RS_IDLE;
@@ -2014,6 +2015,7 @@ static void gdb_read_byte(GDBState *s, int ch)
     if (vm_running) {
         /* when the CPU is running, we cannot do anything except stop
            it when receiving a char */
+        strncpy(vm_stop_reason, "gdbstab", STOP_REASON_LEN);
         vm_stop(EXCP_INTERRUPT);
     } else
 #endif
@@ -2265,6 +2267,7 @@ static void gdb_chr_event(void *opaque, int event)
 {
     switch (event) {
     case CHR_EVENT_RESET:
+        strncpy(vm_stop_reason, "gdbstab", STOP_REASON_LEN);
         vm_stop(EXCP_INTERRUPT);
         gdb_has_xml = 0;
         break;

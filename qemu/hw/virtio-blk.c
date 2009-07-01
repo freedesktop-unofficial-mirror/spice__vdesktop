@@ -66,9 +66,10 @@ static int virtio_blk_handle_write_error(VirtIOBlockReq *req, int error)
         req->next = s->rq;
         s->rq = req;
         vm_stop(0);
-        term_printf_async(VMSTOP_ASYNC_EVENT,
-                "VM is stopped due to disk write error: %s: %s\n",
-		bdrv_get_device_name(req->dev->bs), strerror(error));
+	snprintf(vm_stop_reason, STOP_REASON_LEN,
+			"VM is stopped due to disk write error: %s: %s",
+			bdrv_get_device_name(s->bs), strerror(error));
+        term_printf_async(VMSTOP_ASYNC_EVENT, "%s\n", vm_stop_reason);
     } else {
         virtio_blk_req_complete(req, VIRTIO_BLK_S_IOERR);
     }

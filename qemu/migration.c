@@ -255,6 +255,7 @@ void migrate_fd_put_ready(void *opaque)
     dprintf("iterate\n");
     if (qemu_savevm_state_iterate(s->file) == 1) {
         dprintf("done iterating\n");
+	strncpy(vm_stop_reason, "migration", STOP_REASON_LEN);
         vm_stop(0);
 
         qemu_aio_flush();

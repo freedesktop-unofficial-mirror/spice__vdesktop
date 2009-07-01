@@ -25,6 +25,8 @@ void qemu_del_vm_stop_handler(VMStopHandler *cb, void *opaque);
 
 void vm_start(void);
 void vm_stop(int reason);
+#define STOP_REASON_LEN 1024
+extern char vm_stop_reason[];
 
 uint64_t ram_bytes_remaining(void);
 uint64_t ram_bytes_transferred(void);
