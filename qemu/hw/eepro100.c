@@ -1736,6 +1736,25 @@ static void nic_save(QEMUFile * f, void *opaque)
     qemu_put_buffer(f, s->configuration, sizeof(s->configuration));
 }
 
+static void nic_cleanup(VLANClientState *vc)
+{
+    EEPRO100State *s = vc->opaque;
+
+    unregister_savevm(vc->model, s);
+
+    eeprom93xx_free(s->eeprom);
+}
+
+static int pci_nic_uninit(PCIDevice *dev)
+{
+    PCIEEPRO100State *d = (PCIEEPRO100State *) dev;
+    EEPRO100State *s = &d->eepro100;
+
+    cpu_unregister_io_memory(s->mmio_index);
+
+    return 0;
+}
+
 static PCIDevice *nic_init(PCIBus * bus, NICInfo * nd,
                      const char *name, uint32_t device)
 {
@@ -1749,6 +1768,8 @@ static PCIDevice *nic_init(PCIBus * bus, NICInfo * nd,
                                                  NULL, NULL);
     if (!d)
         return NULL;
+
+    d->dev.unregister = pci_nic_uninit;
 
     s = &d->eepro100;
     s->device = device;
@@ -1781,6 +1802,7 @@ static PCIDevice *nic_init(PCIBus * bus, NICInfo * nd,
     s->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  nic_receive, nic_can_receive, s);
     nd->vc = s->vc;
+    s->vc->cleanup = nic_cleanup;
 
     qemu_format_nic_info_str(s->vc, s->macaddr);
 
