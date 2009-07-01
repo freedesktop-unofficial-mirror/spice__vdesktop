@@ -779,6 +779,13 @@ static void ne2000_map(PCIDevice *pci_dev, int region_num,
     register_ioport_read(addr + 0x1f, 1, 1, ne2000_reset_ioport_read, s);
 }
 
+static void ne2000_cleanup(VLANClientState *vc)
+{
+    NE2000State *s = vc->opaque;
+
+    unregister_savevm("ne2000", s);
+}
+
 PCIDevice *pci_ne2000_init(PCIBus *bus, NICInfo *nd, int devfn)
 {
     PCINE2000State *d;
@@ -812,6 +819,7 @@ PCIDevice *pci_ne2000_init(PCIBus *bus, NICInfo *nd, int devfn)
     s->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  ne2000_receive, ne2000_can_receive, s);
     nd->vc = s->vc;
+    s->vc->cleanup = ne2000_cleanup;
 
     qemu_format_nic_info_str(s->vc, s->macaddr);
 
