@@ -1123,6 +1123,7 @@ pci_e1000_init(PCIBus *bus, NICInfo *nd, int devfn)
 
     d->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  e1000_receive, e1000_can_receive, d);
+    nd->vc = d->vc;
     d->vc->cleanup = e1000_cleanup;
     d->vc->link_status_changed = e1000_set_link_status;
 

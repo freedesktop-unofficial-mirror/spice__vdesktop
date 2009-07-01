@@ -1780,6 +1780,7 @@ static PCIDevice *nic_init(PCIBus * bus, NICInfo * nd,
 
     s->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  nic_receive, nic_can_receive, s);
+    nd->vc = s->vc;
 
     qemu_format_nic_info_str(s->vc, s->macaddr);
 

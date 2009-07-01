@@ -476,6 +476,7 @@ PCIDevice *virtio_net_init(PCIBus *bus, NICInfo *nd, int devfn)
     n->status = VIRTIO_NET_S_LINK_UP;
     n->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                  virtio_net_receive, virtio_net_can_receive, n);
+    nd->vc = n->vc;
     n->vc->cleanup = virtio_net_cleanup;
     n->vc->link_status_changed = virtio_net_set_link_status;
     n->vc->fd_read_raw = virtio_net_receive_raw;

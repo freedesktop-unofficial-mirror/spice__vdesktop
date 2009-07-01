@@ -1946,6 +1946,7 @@ static void pcnet_common_init(PCNetState *d, NICInfo *nd, const char *info_str, 
     if (nd && nd->vlan) {
         d->vc = qemu_new_vlan_client(nd->vlan, nd->model, nd->name,
                                      pcnet_receive, pcnet_can_receive, d);
+        nd->vc = d->vc;
         d->vc->cleanup = cleanup;
 
         qemu_format_nic_info_str(d->vc, d->nd->macaddr);
