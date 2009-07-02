@@ -29,3 +29,4 @@
 0x00020018  STLB_INVAL    vcpu = 0x%(vcpu)08x  pid = 0x%(pid)08x [ index = 0x%(1)08x, tid = 0x%(2)08x, word1=0x%(3)08x, word2=0x%(4)08x, word3=0x%(5)08x ]
 # ppc: instruction emulation - this type is handled more complex in kvmtrace_format, but listed to show the eventid and transported data
 #0x00020019  %(ts)d (+%(relts)12d)  PPC_INSTR     vcpu = 0x%(vcpu)08x  pid = 0x%(pid)08x [ instr = 0x%(1)08x, pc = 0x%(2)08x, emul = 0x%(3)08x, nsec = %(4)08d ]
+0x000200020  %(ts)d (+%(relts)12d)  RMAP_NUKE    vcpu = 0x%(vcpu)08x  pid = 0x%(pid)08x [  gfn = %(1)d, lpage = %(2)d, recycle = %(3)d ]
