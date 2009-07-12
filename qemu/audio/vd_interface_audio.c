@@ -397,6 +397,7 @@ static int line_out_run(HWVoiceOut *hw)
             len = audio_MIN(len, driver.play_avail);
             hw->clip(driver.play_now, hw->mix_buf + rpos, len);
             if (!(driver.play_avail -= len)) {
+                ASSERT(driver.play_plug);
                 driver.play_plug->put_frame(driver.play_plug,
                                             driver.play_frame);
                 driver.play_frame = driver.play_now = NULL;
@@ -436,7 +437,10 @@ static int line_out_ctl(HWVoiceOut *hw, int cmd, ...)
                 driver.play_now = driver.play_frame = NULL;
                 driver.play_plug->put_frame(driver.play_plug, frame);
             }
-            driver.play_plug->stop(driver.play_plug);
+
+            if (driver.play_plug) {
+                driver.play_plug->stop(driver.play_plug);
+            }
         }
         break;
     }
