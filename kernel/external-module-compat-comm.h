@@ -645,12 +645,14 @@ static inline ktime_t kvm_hrtimer_expires_remaining(const struct hrtimer *timer)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,28)
+#if !defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,4)
 
 static inline int pci_reset_function(struct pci_dev *dev)
 {
 	return 0;
 }
 
+#endif
 #endif
 
 #ifndef KMEM_CACHE
