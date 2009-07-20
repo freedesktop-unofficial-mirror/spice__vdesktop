@@ -226,7 +226,7 @@ CharDriverState *serial_hds[MAX_SERIAL_PORTS];
 CharDriverState *parallel_hds[MAX_PARALLEL_PORTS];
 #ifdef TARGET_I386
 int win2k_install_hack = 0;
-int rtc_td_hack = 0;
+int rtc_td_hack = 1;
 #endif
 int usb_enabled = 0;
 const char *assigned_devices[MAX_DEV_ASSIGN_CMDLINE];
@@ -4417,6 +4417,7 @@ enum {
     QEMU_OPTION_enable_nesting,
     QEMU_OPTION_win2k_hack,
     QEMU_OPTION_rtc_td_hack,
+    QEMU_OPTION_no_rtc_td_hack,
     QEMU_OPTION_usb,
     QEMU_OPTION_usbdevice,
     QEMU_OPTION_smp,
@@ -4565,6 +4566,7 @@ static const QEMUOption qemu_options[] = {
     { "pidfile", HAS_ARG, QEMU_OPTION_pidfile },
     { "win2k-hack", 0, QEMU_OPTION_win2k_hack },
     { "rtc-td-hack", 0, QEMU_OPTION_rtc_td_hack },
+    { "no-rtc-td-hack", 0, QEMU_OPTION_no_rtc_td_hack },
     { "usbdevice", HAS_ARG, QEMU_OPTION_usbdevice },
     { "smp", HAS_ARG, QEMU_OPTION_smp },
     { "vnc", HAS_ARG, QEMU_OPTION_vnc },
@@ -5580,6 +5582,9 @@ int main(int argc, char **argv, char **envp)
                 break;
             case QEMU_OPTION_rtc_td_hack:
                 rtc_td_hack = 1;
+                break;
+            case QEMU_OPTION_no_rtc_td_hack:
+                rtc_td_hack = 0;
                 break;
             case QEMU_OPTION_acpitable:
                 if(acpi_table_add(optarg) < 0) {
