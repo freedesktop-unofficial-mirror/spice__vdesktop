@@ -2807,9 +2807,12 @@ static int usb_device_add(const char *devname)
         dev = usb_msd_init(p);
     } else
 #endif
+#ifdef CONFIG_USB_WACOM
     if (!strcmp(devname, "wacom-tablet")) {
         dev = usb_wacom_init();
-    } else if (strstart(devname, "serial:", &p)) {
+    } else
+#endif
+   if (strstart(devname, "serial:", &p)) {
         dev = usb_serial_init(p);
 #ifdef CONFIG_BRLAPI
     } else if (!strcmp(devname, "braille")) {

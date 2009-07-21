@@ -178,6 +178,7 @@ smb="yes"
 scsi="yes"
 isapc="yes"
 usb_msd="yes"
+usb_wacom="yes"
 kvm="yes"
 kvm_nested="no"
 kvm_cap_pit="no"
@@ -422,6 +423,8 @@ for opt do
   ;;
   --disable-usb-msd) usb_msd="no"
   ;;
+  --disable-usb-wacom) usb_wacom="no"
+  ;;
   --disable-kvm) kvm="no"
   ;;
   --enable-profiler) profiler="yes"
@@ -578,6 +581,7 @@ echo "  --disable-smb            disable smb user directories"
 echo "  --disable-scsi           disable scsi devices"
 echo "  --disable-isapc          disable isapc machine"
 echo "  --disable-usb-msd        disable usb storage devices"
+echo "  --disable-usb-wacom      disable usb wacom tablets"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -1312,6 +1316,7 @@ echo "SCSI devices      $scsi"
 echo "ISAPC support     $isapc"
 echo "KVM nested        $kvm_nested"
 echo "USB storage       $usb_msd"
+echo "USB wacom         $usb_wacom"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1614,6 +1619,10 @@ fi
 if test "$usb_msd" = "yes" ; then
   echo "CONFIG_USB_MSD=yes" >> $config_mak
   echo "#define CONFIG_USB_MSD 1" >> $config_h
+fi
+if test "$usb_wacom" = "yes" ; then
+  echo "CONFIG_USB_WACOM=yes" >> $config_mak
+  echo "#define CONFIG_USB_WACOM 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h
