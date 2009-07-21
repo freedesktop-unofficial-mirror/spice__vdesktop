@@ -187,10 +187,12 @@ void pci_info(void);
 PCIBus *pci_bridge_init(PCIBus *bus, int devfn, uint32_t id,
                         pci_map_irq_fn map_irq, const char *name);
 
+#ifdef CONFIG_SCSI
 /* lsi53c895a.c */
 #define LSI_MAX_DEVS 7
 void lsi_scsi_attach(void *opaque, BlockDriverState *bd, int id);
 void *lsi_scsi_init(PCIBus *bus, int devfn);
+#endif
 
 /* vmware_vga.c */
 void pci_vmsvga_init(PCIBus *bus, DisplayState *ds, uint8_t *vga_ram_base,

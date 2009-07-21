@@ -1167,6 +1167,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
         i440fx_init_memory_mappings(i440fx_state);
     }
 
+#ifdef CONFIG_SCSI
     if (pci_enabled) {
 	int max_bus;
         int bus, unit;
@@ -1184,6 +1185,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
 	    }
         }
     }
+#endif
 
     /* Add virtio block devices */
     if (pci_enabled) {

@@ -70,10 +70,12 @@ void drive_hot_add(const char *pci_addr, const char *opts)
     bus = drive_get_max_bus (type);
 
     switch (type) {
+#ifdef CONFIG_SCSI
     case IF_SCSI:
         success = 1;
         lsi_scsi_attach (dev, drives_table[drive_idx].bdrv,
                          drives_table[drive_idx].unit);
+#endif
         break;
     default:
         term_printf("Can't hot-add drive to type %d\n", type);
@@ -112,12 +114,14 @@ static PCIDevice *qemu_pci_hot_add_storage(PCIBus *pci_bus, const char *opts)
     }
 
     switch (type) {
+#ifdef CONFIG_SCSI
     case IF_SCSI:
         opaque = lsi_scsi_init (pci_bus, -1);
         if (opaque && drive_idx >= 0)
             lsi_scsi_attach (opaque, drives_table[drive_idx].bdrv,
                              drives_table[drive_idx].unit);
         break;
+#endif
     case IF_VIRTIO:
         opaque = virtio_blk_init (pci_bus, drives_table[drive_idx].bdrv);
         break;

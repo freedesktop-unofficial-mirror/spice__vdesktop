@@ -683,8 +683,10 @@ ifdef CONFIG_BLUEZ
 LIBS += $(CONFIG_BLUEZ_LIBS)
 endif
 
+ifdef CONFIG_SCSI
 # SCSI layer
 OBJS+= lsi53c895a.o esp.o
+endif
 
 # USB layer
 OBJS+= usb-ohci.o

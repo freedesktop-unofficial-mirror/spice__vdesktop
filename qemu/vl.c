@@ -2419,9 +2419,11 @@ int drive_init(struct drive_opt *arg, int snapshot,
         if (!strcmp(buf, "ide")) {
 	    type = IF_IDE;
             max_devs = MAX_IDE_DEVS;
+#ifdef CONFIG_SCSI
         } else if (!strcmp(buf, "scsi")) {
 	    type = IF_SCSI;
             max_devs = MAX_SCSI_DEVS;
+#endif
         } else if (!strcmp(buf, "floppy")) {
 	    type = IF_FLOPPY;
             max_devs = 0;

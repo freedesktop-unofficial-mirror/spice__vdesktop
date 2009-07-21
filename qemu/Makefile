@@ -79,8 +79,10 @@ OBJS+=irq.o
 OBJS+=i2c.o smbus.o smbus_eeprom.o max7310.o max111x.o wm8750.o
 OBJS+=ssd0303.o ssd0323.o ads7846.o stellaris_input.o twl92230.o
 OBJS+=tmp105.o lm832x.o
-OBJS+=scsi-disk.o cdrom.o
-OBJS+=scsi-generic.o
+OBJS+=cdrom.o
+ifdef CONFIG_SCSI
+OBJS+=scsi-disk.o scsi-generic.o
+endif
 OBJS+=usb.o usb-hub.o usb-$(HOST_USB).o usb-hid.o usb-msd.o usb-wacom.o
 OBJS+=usb-serial.o usb-net.o
 OBJS+=sd.o ssi-sd.o
