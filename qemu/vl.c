@@ -234,7 +234,7 @@ int assigned_devices_index;
 int smp_cpus = 1;
 const char *vnc_display;
 int acpi_enabled = 1;
-int no_hpet = 0;
+int no_hpet = 1;
 int virtio_balloon = 1;
 int fd_bootchk = 1;
 int no_reboot = 0;
