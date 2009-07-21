@@ -176,6 +176,7 @@ mixemu="no"
 bluez="yes"
 smb="yes"
 scsi="yes"
+isapc="yes"
 kvm="yes"
 kvm_cap_pit="no"
 kvm_cap_device_assignment="no"
@@ -409,6 +410,8 @@ for opt do
   ;;
   --disable-scsi) scsi="no"
   ;;
+  --disable-isapc) isapc="no"
+  ;;
   --disable-kvm) kvm="no"
   ;;
   --enable-profiler) profiler="yes"
@@ -563,6 +566,7 @@ echo "  --disable-curses         disable curses output"
 echo "  --disable-bluez          disable bluez stack connectivity"
 echo "  --disable-smb            disable smb user directories"
 echo "  --disable-scsi           disable scsi devices"
+echo "  --disable-isapc          disable isapc machine"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -1294,6 +1298,7 @@ echo "QXL               $qxl"
 echo "Spice             $spice"
 echo "SMB directores    $smb"
 echo "SCSI devices      $scsi"
+echo "ISAPC support     $isapc"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1586,6 +1591,9 @@ fi
 if test "$scsi" = "yes" ; then
   echo "CONFIG_SCSI=yes" >> $config_mak
   echo "#define CONFIG_SCSI 1" >> $config_h
+fi
+if test "$isapc" = "yes" ; then
+  echo "#define CONFIG_ISAPC 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h
