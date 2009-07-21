@@ -180,6 +180,7 @@ isapc="yes"
 usb_msd="yes"
 usb_wacom="yes"
 usb_serial="yes"
+usb_net="yes"
 kvm="yes"
 kvm_nested="no"
 kvm_cap_pit="no"
@@ -427,6 +428,8 @@ for opt do
   --disable-usb-wacom) usb_wacom="no"
   ;;
   --disable-usb-serial) usb_serial="no"
+  ;;
+  --disable-usb-net) usb_net="no"
   ;;
   --disable-kvm) kvm="no"
   ;;
@@ -1322,6 +1325,7 @@ echo "KVM nested        $kvm_nested"
 echo "USB storage       $usb_msd"
 echo "USB wacom         $usb_wacom"
 echo "USB serial        $usb_serial"
+echo "USB net           $usb_net"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1632,6 +1636,10 @@ fi
 if test "$usb_serial" = "yes" ; then
   echo "CONFIG_USB_SERIAL=yes" >> $config_mak
   echo "#define CONFIG_USB_SERIAL 1" >> $config_h
+fi
+if test "$usb_net" = "yes" ; then
+  echo "CONFIG_USB_NET=yes" >> $config_mak
+  echo "#define CONFIG_USB_NET 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h

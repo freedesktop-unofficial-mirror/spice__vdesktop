@@ -93,7 +93,9 @@ endif
 ifdef CONFIG_USB_SERIAL
 OBJS+=usb-serial.o
 endif
+ifdef CONFIG_USB_NET
 OBJS+=usb-net.o
+endif
 OBJS+=sd.o ssi-sd.o
 OBJS+=bt.o bt-host.o bt-vhci.o bt-l2cap.o bt-sdp.o bt-hci.o bt-hid.o usb-bt.o
 OBJS+=buffered_file.o migration.o migration-tcp.o net.o qemu-sockets.o

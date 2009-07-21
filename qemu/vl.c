@@ -2822,6 +2822,7 @@ static int usb_device_add(const char *devname)
         dev = usb_baum_init();
     } else
 #endif
+#ifdef CONFIG_USB_NET
     if (strstart(devname, "net:", &p)) {
         int nic = nb_nics;
 
@@ -2829,7 +2830,9 @@ static int usb_device_add(const char *devname)
             return -1;
         nd_table[nic].model = "usb";
         dev = usb_net_init(&nd_table[nic]);
-    } else if (!strcmp(devname, "bt") || strstart(devname, "bt:", &p)) {
+    } else
+#endif
+    if (!strcmp(devname, "bt") || strstart(devname, "bt:", &p)) {
         dev = usb_bt_init(devname[2] ? hci_init(p) :
                         bt_new_hci(qemu_find_bt_vlan(0)));
     } else {
