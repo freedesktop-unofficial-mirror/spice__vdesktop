@@ -179,6 +179,7 @@ scsi="yes"
 isapc="yes"
 usb_msd="yes"
 usb_wacom="yes"
+usb_serial="yes"
 kvm="yes"
 kvm_nested="no"
 kvm_cap_pit="no"
@@ -425,6 +426,8 @@ for opt do
   ;;
   --disable-usb-wacom) usb_wacom="no"
   ;;
+  --disable-usb-serial) usb_serial="no"
+  ;;
   --disable-kvm) kvm="no"
   ;;
   --enable-profiler) profiler="yes"
@@ -582,6 +585,7 @@ echo "  --disable-scsi           disable scsi devices"
 echo "  --disable-isapc          disable isapc machine"
 echo "  --disable-usb-msd        disable usb storage devices"
 echo "  --disable-usb-wacom      disable usb wacom tablets"
+echo "  --disable-usb-serial     disable usb serial"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -1317,6 +1321,7 @@ echo "ISAPC support     $isapc"
 echo "KVM nested        $kvm_nested"
 echo "USB storage       $usb_msd"
 echo "USB wacom         $usb_wacom"
+echo "USB serial        $usb_serial"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1623,6 +1628,10 @@ fi
 if test "$usb_wacom" = "yes" ; then
   echo "CONFIG_USB_WACOM=yes" >> $config_mak
   echo "#define CONFIG_USB_WACOM 1" >> $config_h
+fi
+if test "$usb_serial" = "yes" ; then
+  echo "CONFIG_USB_SERIAL=yes" >> $config_mak
+  echo "#define CONFIG_USB_SERIAL 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h

@@ -90,7 +90,10 @@ endif
 ifdef CONFIG_USB_WACOM
 OBJS+=usb-wacom.o
 endif
-OBJS+=usb-serial.o usb-net.o
+ifdef CONFIG_USB_SERIAL
+OBJS+=usb-serial.o
+endif
+OBJS+=usb-net.o
 OBJS+=sd.o ssi-sd.o
 OBJS+=bt.o bt-host.o bt-vhci.o bt-l2cap.o bt-sdp.o bt-hci.o bt-hid.o usb-bt.o
 OBJS+=buffered_file.o migration.o migration-tcp.o net.o qemu-sockets.o

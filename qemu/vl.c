@@ -2812,13 +2812,17 @@ static int usb_device_add(const char *devname)
         dev = usb_wacom_init();
     } else
 #endif
-   if (strstart(devname, "serial:", &p)) {
+#ifdef CONFIG_USB_SERIAL
+    if (strstart(devname, "serial:", &p)) {
         dev = usb_serial_init(p);
-#ifdef CONFIG_BRLAPI
-    } else if (!strcmp(devname, "braille")) {
-        dev = usb_baum_init();
+    } else
 #endif
-    } else if (strstart(devname, "net:", &p)) {
+#ifdef CONFIG_BRLAPI
+    if (!strcmp(devname, "braille")) {
+        dev = usb_baum_init();
+    } else
+#endif
+    if (strstart(devname, "net:", &p)) {
         int nic = nb_nics;
 
         if (net_client_init("nic", p) < 0)
