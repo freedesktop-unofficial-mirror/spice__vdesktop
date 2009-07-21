@@ -651,7 +651,16 @@ ifdef CONFIG_OSS
 LIBS += $(CONFIG_OSS_LIB)
 endif
 
-SOUND_HW = sb16.o es1370.o ac97.o
+SOUND_HW =
+ifdef CONFIG_SB16
+SOUND_HW += sb16.o
+endif
+ifdef CONFIG_ES1370
+SOUND_HW += es1370.o
+endif
+ifdef CONFIG_AC97
+SOUND_HW = ac97.o
+endif
 ifdef CONFIG_ADLIB
 SOUND_HW += fmopl.o adlib.o
 adlib.o fmopl.o: CFLAGS := ${CFLAGS} -DBUILD_Y8950=0
