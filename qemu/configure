@@ -178,6 +178,7 @@ smb="yes"
 scsi="yes"
 isapc="yes"
 kvm="yes"
+kvm_nested="no"
 kvm_cap_pit="no"
 kvm_cap_device_assignment="no"
 kerneldir=""
@@ -321,6 +322,10 @@ if [ "$bsd" = "yes" ] ; then
   bsd_user="yes"
 fi
 
+if [ "$kvm" == "yes" ] ; then
+  kvm_nested="yes"
+fi
+
 # find source path
 source_path=`dirname "$0"`
 source_path_used="no"
@@ -411,6 +416,8 @@ for opt do
   --disable-scsi) scsi="no"
   ;;
   --disable-isapc) isapc="no"
+  ;;
+  --disable-kvm-nested) kvm_nested="no"
   ;;
   --disable-kvm) kvm="no"
   ;;
@@ -1299,6 +1306,7 @@ echo "Spice             $spice"
 echo "SMB directores    $smb"
 echo "SCSI devices      $scsi"
 echo "ISAPC support     $isapc"
+echo "KVM nested        $kvm_nested"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1594,6 +1602,9 @@ if test "$scsi" = "yes" ; then
 fi
 if test "$isapc" = "yes" ; then
   echo "#define CONFIG_ISAPC 1" >> $config_h
+fi
+if test "$kvm_nested" = "yes" ; then
+  echo "#define CONFIG_KVM_NESTED 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h
