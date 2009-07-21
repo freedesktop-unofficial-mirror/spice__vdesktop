@@ -83,7 +83,10 @@ OBJS+=cdrom.o
 ifdef CONFIG_SCSI
 OBJS+=scsi-disk.o scsi-generic.o
 endif
-OBJS+=usb.o usb-hub.o usb-$(HOST_USB).o usb-hid.o usb-msd.o usb-wacom.o
+OBJS+=usb.o usb-hub.o usb-$(HOST_USB).o usb-hid.o usb-wacom.o
+ifdef CONFIG_USB_MSD
+OBJS+=usb-msd.o
+endif
 OBJS+=usb-serial.o usb-net.o
 OBJS+=sd.o ssi-sd.o
 OBJS+=bt.o bt-host.o bt-vhci.o bt-l2cap.o bt-sdp.o bt-hci.o bt-hid.o usb-bt.o

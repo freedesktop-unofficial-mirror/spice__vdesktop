@@ -2801,9 +2801,13 @@ static int usb_device_add(const char *devname)
         dev = usb_tablet_init();
     } else if (!strcmp(devname, "keyboard")) {
         dev = usb_keyboard_init();
-    } else if (strstart(devname, "disk:", &p)) {
+    } else
+#ifdef CONFIG_USB_MSD
+    if (strstart(devname, "disk:", &p)) {
         dev = usb_msd_init(p);
-    } else if (!strcmp(devname, "wacom-tablet")) {
+    } else
+#endif
+    if (!strcmp(devname, "wacom-tablet")) {
         dev = usb_wacom_init();
     } else if (strstart(devname, "serial:", &p)) {
         dev = usb_serial_init(p);
