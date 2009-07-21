@@ -4235,7 +4235,7 @@ static void help(int exitcode)
 #ifdef CONFIG_SLIRP
            "-tftp dir       allow tftp access to files in dir [-net user]\n"
            "-bootp file     advertise file in BOOTP replies\n"
-#ifndef _WIN32
+#ifdef CONFIG_SMB
            "-smb dir        allow SMB access to files in 'dir' [-net user]\n"
 #endif
            "-redir [tcp|udp]:host-port:[guest-host]:guest-port\n"
@@ -4508,7 +4508,7 @@ static const QEMUOption qemu_options[] = {
 #ifdef CONFIG_SLIRP
     { "tftp", HAS_ARG, QEMU_OPTION_tftp },
     { "bootp", HAS_ARG, QEMU_OPTION_bootp },
-#ifndef _WIN32
+#ifdef CONFIG_SMB
     { "smb", HAS_ARG, QEMU_OPTION_smb },
 #endif
     { "redir", HAS_ARG, QEMU_OPTION_redir },
@@ -5383,7 +5383,7 @@ int main(int argc, char **argv, char **envp)
             case QEMU_OPTION_bootp:
                 bootp_filename = optarg;
                 break;
-#ifndef _WIN32
+#ifdef CONFIG_SMB
             case QEMU_OPTION_smb:
 		net_slirp_smb(optarg);
                 break;

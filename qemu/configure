@@ -174,6 +174,7 @@ aio="yes"
 nptl="yes"
 mixemu="no"
 bluez="yes"
+smb="yes"
 kvm="yes"
 kvm_cap_pit="no"
 kvm_cap_device_assignment="no"
@@ -403,6 +404,8 @@ for opt do
   ;;
   --disable-bluez) bluez="no"
   ;;
+  --disable-smb) smb="no"
+  ;;
   --disable-kvm) kvm="no"
   ;;
   --enable-profiler) profiler="yes"
@@ -555,6 +558,7 @@ echo "  --disable-vnc-tls        disable TLS encryption for VNC server"
 echo "  --disable-gcrypt         disable libgcrypt usage"
 echo "  --disable-curses         disable curses output"
 echo "  --disable-bluez          disable bluez stack connectivity"
+echo "  --disable-smb            disable smb user directories"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -588,6 +592,7 @@ if test "$mingw32" = "yes" ; then
     oss="no"
     linux_user="no"
     bsd_user="no"
+    smb="no"
 fi
 
 if test ! -x "$(which cgcc 2>/dev/null)"; then
@@ -1283,6 +1288,7 @@ echo "vde support       $vde"
 echo "AIO support       $aio"
 echo "QXL               $qxl"
 echo "Spice             $spice"
+echo "SMB directores    $smb"
 
 if test $sdl_too_old = "yes"; then
 echo "-> Your SDL version is too old - please upgrade to have SDL support"
@@ -1568,6 +1574,9 @@ if test "$bluez" = "yes" ; then
   echo "CONFIG_BLUEZ_CFLAGS=$bluez_cflags" >> $config_mak
   echo "CONFIG_BLUEZ_LIBS=$bluez_libs" >> $config_mak
   echo "#define CONFIG_BLUEZ 1" >> $config_h
+fi
+if test "$smb" = "yes" ; then
+  echo "#define CONFIG_SMB 1" >> $config_h
 fi
 if test "$aio" = "yes" ; then
   echo "#define CONFIG_AIO 1" >> $config_h

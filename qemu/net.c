@@ -623,7 +623,7 @@ void net_slirp_redir(const char *redir_str)
     exit(1);
 }
 
-#ifndef _WIN32
+#ifdef CONFIG_SMB
 
 static char smb_dir[1024];
 
