@@ -29,8 +29,8 @@ typedef struct VirtIONet
     VirtQueue *rx_vq;
     VirtQueue *tx_vq;
     VLANClientState *vc;
-    QEMUTimer *tx_timer;
-    int tx_timer_active;
+    QEMUBH *tx_bh;
+    int tx_bh_scheduled;
     struct {
         VirtQueueElement elem;
         ssize_t len;
@@ -325,9 +325,10 @@ static void virtio_net_receive_raw(void *opaque, const uint8_t *buf, int size)
 }
 
 /* TX */
-static void virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq)
+static int virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq, int enable_notify)
 {
     VirtQueueElement elem;
+    int num_packets = 0;
 #ifdef TAP_VNET_HDR
     int has_vnet_hdr = tap_has_vnet_hdr(n->vc->vlan->first_client);
 #else
@@ -335,11 +336,11 @@ static void virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq)
 #endif
 
     if (!(n->vdev.status & VIRTIO_CONFIG_S_DRIVER_OK))
-        return;
+        return num_packets;
 
     if (n->tx_queue.out_num) {
         virtio_queue_set_notification(n->tx_vq, 0);
-        return;
+        return num_packets;
     }
 
     while (virtqueue_pop(vq, &elem)) {
@@ -378,43 +379,46 @@ static void virtio_net_flush_tx(VirtIONet *n, VirtQueue *vq)
             n->tx_queue.len = len;
             n->tx_queue.out_sg = out_sg;
             n->tx_queue.out_num = out_num;
-            return;
+            return num_packets;
         }
 
         virtqueue_push(vq, &elem, len + ret);
         virtio_notify(&n->vdev, vq);
+
+        num_packets++;
     }
+
+    if (enable_notify) {
+        virtio_queue_set_notification(vq, 1);
+        num_packets += virtio_net_flush_tx(n, vq, 0);
+    }
+
+    return num_packets;
 }
 
 static void virtio_net_handle_tx(VirtIODevice *vdev, VirtQueue *vq)
 {
     VirtIONet *n = to_virtio_net(vdev);
 
-    if (n->tx_timer_active) {
-        virtio_queue_set_notification(vq, 1);
-        qemu_del_timer(n->tx_timer);
-        n->tx_timer_active = 0;
-        virtio_net_flush_tx(n, vq);
-    } else {
-        qemu_mod_timer(n->tx_timer,
-                       qemu_get_clock(vm_clock) + TX_TIMER_INTERVAL);
-        n->tx_timer_active = 1;
-        virtio_queue_set_notification(vq, 0);
-    }
+    if (n->tx_bh_scheduled)
+        return;
+
+    virtio_queue_set_notification(n->tx_vq, 0);
+    qemu_bh_schedule(n->tx_bh);
+    n->tx_bh_scheduled = 1;
 }
 
-static void virtio_net_tx_timer(void *opaque)
+static void virtio_net_tx_bh(void *opaque)
 {
     VirtIONet *n = opaque;
 
-    n->tx_timer_active = 0;
+    n->tx_bh_scheduled = 0;
 
-    /* Just in case the driver is not ready on more */
-    if (!(n->vdev.status & VIRTIO_CONFIG_S_DRIVER_OK))
-        return;
-
-    virtio_queue_set_notification(n->tx_vq, 1);
-    virtio_net_flush_tx(n, n->tx_vq);
+    if (virtio_net_flush_tx(n, n->tx_vq, 1)) {
+        virtio_queue_set_notification(n->tx_vq, 0);
+        qemu_bh_schedule(n->tx_bh);
+        n->tx_bh_scheduled = 1;
+    }
 }
 
 static void virtio_net_retry_tx(void *opaque)
@@ -436,7 +440,7 @@ static void virtio_net_retry_tx(void *opaque)
     }
 
     virtio_queue_set_notification(n->tx_vq, 1);
-    virtio_net_flush_tx(n, n->tx_vq);
+    virtio_net_flush_tx(n, n->tx_vq, 0);
 }
 
 static void virtio_net_save(QEMUFile *f, void *opaque)
@@ -446,7 +450,7 @@ static void virtio_net_save(QEMUFile *f, void *opaque)
     virtio_save(&n->vdev, f);
 
     qemu_put_buffer(f, n->mac, 6);
-    qemu_put_be32(f, n->tx_timer_active);
+    qemu_put_be32(f, n->tx_bh_scheduled);
     qemu_put_be32(f, n->mergeable_rx_bufs);
 
 #ifdef TAP_VNET_HDR
@@ -464,7 +468,7 @@ static int virtio_net_load(QEMUFile *f, void *opaque, int version_id)
     virtio_load(&n->vdev, f);
 
     qemu_get_buffer(f, n->mac, 6);
-    n->tx_timer_active = qemu_get_be32(f);
+    n->tx_bh_scheduled = qemu_get_be32(f);
     n->mergeable_rx_bufs = qemu_get_be32(f);
 
 #ifdef TAP_VNET_HDR
@@ -472,9 +476,8 @@ static int virtio_net_load(QEMUFile *f, void *opaque, int version_id)
         tap_using_vnet_hdr(n->vc->vlan->first_client, 1);
 #endif
 
-    if (n->tx_timer_active) {
-        qemu_mod_timer(n->tx_timer,
-                       qemu_get_clock(vm_clock) + TX_TIMER_INTERVAL);
+    if (n->tx_bh_scheduled) {
+        qemu_bh_schedule(n->tx_bh);
     }
 
     return 0;
@@ -485,9 +488,6 @@ static void virtio_net_cleanup(VLANClientState *vc)
     VirtIONet *n = vc->opaque;
 
     unregister_savevm("virtio-net", n);
-
-    qemu_del_timer(n->tx_timer);
-    qemu_free_timer(n->tx_timer);
 
     virtio_cleanup(&n->vdev);
 }
@@ -526,8 +526,8 @@ PCIDevice *virtio_net_init(PCIBus *bus, NICInfo *nd, int devfn)
 
     qemu_format_nic_info_str(n->vc, n->mac);
 
-    n->tx_timer = qemu_new_timer(vm_clock, virtio_net_tx_timer, n);
-    n->tx_timer_active = 0;
+    n->tx_bh = qemu_bh_new(virtio_net_tx_bh, n);
+    n->tx_bh_scheduled = 0;
     n->mergeable_rx_bufs = 0;
 
     register_savevm("virtio-net", virtio_net_id++, 2,

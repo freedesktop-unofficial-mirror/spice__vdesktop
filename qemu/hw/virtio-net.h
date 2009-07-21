@@ -41,8 +41,6 @@
 
 #define VIRTIO_NET_S_LINK_UP    1       /* Link is up */
 
-#define TX_TIMER_INTERVAL 150000 /* 150 us */
-
 /* Maximum packet size we can receive from tap device: header + 64k */
 #define VIRTIO_NET_MAX_BUFSIZE (sizeof(struct virtio_net_hdr) + (64 << 10))
 
