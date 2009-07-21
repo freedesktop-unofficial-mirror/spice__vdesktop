@@ -2832,10 +2832,13 @@ static int usb_device_add(const char *devname)
         dev = usb_net_init(&nd_table[nic]);
     } else
 #endif
+#ifdef CONFIG_USB_BLUEZ
     if (!strcmp(devname, "bt") || strstart(devname, "bt:", &p)) {
         dev = usb_bt_init(devname[2] ? hci_init(p) :
                         bt_new_hci(qemu_find_bt_vlan(0)));
-    } else {
+    } else
+#endif
+    {
         return -1;
     }
     if (!dev)
