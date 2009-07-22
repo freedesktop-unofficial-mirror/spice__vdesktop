@@ -2017,6 +2017,7 @@ int check_params(char *buf, int buf_size,
     return 0;
 }
 
+#ifdef CONFIG_BLUEZ
 /***********************************************************/
 /* Bluetooth support */
 static int nb_hcis;
@@ -2207,6 +2208,7 @@ static int bt_parse(const char *opt)
     fprintf(stderr, "qemu: bad bluetooth parameter '%s'\n", opt);
     return 1;
 }
+#endif /* CONFIG_BLUEZ */
 
 /***********************************************************/
 /* QEMU Block devices */
@@ -5084,8 +5086,10 @@ int main(int argc, char **argv, char **envp)
     int cyls, heads, secs, translation;
     const char *net_clients[MAX_NET_CLIENTS];
     int nb_net_clients;
+#ifdef CONFIG_BLUEZ
     const char *bt_opts[MAX_BT_CMDLINE];
     int nb_bt_opts;
+#endif
     int hda_index;
     int optind;
     const char *r, *optarg;
@@ -5179,7 +5183,9 @@ int main(int argc, char **argv, char **envp)
     assigned_devices_index = 0;
 
     nb_net_clients = 0;
+#ifdef CONFIG_BLUEZ
     nb_bt_opts = 0;
+#endif
     nb_drives = 0;
     nb_drives_opt = 0;
     hda_index = -1;
@@ -5415,6 +5421,7 @@ int main(int argc, char **argv, char **envp)
                 net_slirp_redir(optarg);
                 break;
 #endif
+#ifdef CONFIG_BLUEZ
             case QEMU_OPTION_bt:
                 if (nb_bt_opts >= MAX_BT_CMDLINE) {
                     fprintf(stderr, "qemu: too many bluetooth options\n");
@@ -5422,6 +5429,7 @@ int main(int argc, char **argv, char **envp)
                 }
                 bt_opts[nb_bt_opts++] = optarg;
                 break;
+#endif
 #ifdef HAS_AUDIO
             case QEMU_OPTION_audio_help:
                 AUD_help ();
@@ -6093,10 +6101,12 @@ int main(int argc, char **argv, char **envp)
     }
 #endif
 
+#ifdef CONFIG_BLUEZ
     /* init the bluetooth world */
     for (i = 0; i < nb_bt_opts; i++)
         if (bt_parse(bt_opts[i]))
             exit(1);
+#endif
 
     /* init the memory */
     phys_ram_size = machine->ram_require & ~RAMSIZE_FIXED;

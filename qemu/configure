@@ -1338,6 +1338,7 @@ echo "USB serial        $usb_serial"
 echo "USB net           $usb_net"
 echo "USB bluez         $usb_bluez"
 echo "VMware drivers    $vmware"
+echo "bluetooth support $bluez"
 echo "Only generic cpus $x86_only_generic_cpus"
 
 if test $sdl_too_old = "yes"; then
