@@ -957,7 +957,7 @@ static int hdev_open(BlockDriverState *bs, const char *filename, int flags)
         /* open will not fail even if no floppy is inserted */
         open_flags |= O_NONBLOCK;
     }
-    if (s->type = FTYPE_FILE &&
+    if (s->type == FTYPE_FILE &&
         strstart(filename, "/dev/sg", NULL)) {
         bs->sg = 1;
     }
