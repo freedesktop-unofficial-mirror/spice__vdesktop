@@ -141,6 +141,7 @@ static x86_def_t x86_defs[] = {
         .xlevel = 0x8000000A,
         .model_id = "QEMU Virtual CPU version " QEMU_VERSION,
     },
+#ifndef CONFIG_X86_ONLY_GENERIC_CPUS
     {
         .name = "core2duo",
         .level = 10,
@@ -163,6 +164,8 @@ static x86_def_t x86_defs[] = {
         .model_id = "Intel(R) Core(TM)2 Duo CPU     T7700  @ 2.40GHz",
     },
 #endif
+
+#endif
     {
         .name = "qemu32",
         .level = 2,
@@ -174,6 +177,7 @@ static x86_def_t x86_defs[] = {
         .xlevel = 0,
         .model_id = "QEMU Virtual CPU version " QEMU_VERSION,
     },
+#ifndef CONFIG_X86_ONLY_GENERIC_CPUS
     {
         .name = "coreduo",
         .level = 10,
@@ -220,6 +224,7 @@ static x86_def_t x86_defs[] = {
         .features = PENTIUM2_FEATURES,
         .xlevel = 0,
     },
+#endif /* CONFIG_X86_ONLY_GENERIC_CPUS */
     {
         .name = "pentium3",
         .level = 2,
@@ -229,6 +234,7 @@ static x86_def_t x86_defs[] = {
         .features = PENTIUM3_FEATURES,
         .xlevel = 0,
     },
+#ifndef CONFIG_X86_ONLY_GENERIC_CPUS
     {
         .name = "athlon",
         .level = 2,
@@ -265,6 +271,7 @@ static x86_def_t x86_defs[] = {
         .xlevel = 0x8000000A,
         .model_id = "Intel(R) Atom(TM) CPU N270   @ 1.60GHz",
     },
+#endif
 };
 
 static int cpu_x86_find_by_name(x86_def_t *x86_cpu_def, const char *cpu_model)
