@@ -4831,9 +4831,11 @@ static void select_vgahw (const char *p)
     } else if (strstart(p, "cirrus", &opts)) {
         cirrus_vga_enabled = 1;
         vmsvga_enabled = 0;
+#ifdef CONFIG_VMWARE
     } else if (strstart(p, "vmware", &opts)) {
         cirrus_vga_enabled = 0;
         vmsvga_enabled = 1;
+#endif
     } else {
     invalid_vga:
         fprintf(stderr, "Unknown vga type: %s\n", p);

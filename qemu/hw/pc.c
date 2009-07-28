@@ -862,7 +862,9 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
 	env = pc_new_cpu(i, cpu_model, pci_enabled);
     }
 
+#ifdef CONFIG_VMWARE
     vmport_init();
+#endif
 
     /* allocate RAM */
     ram_addr = qemu_ram_alloc(0xa0000);
@@ -1040,12 +1042,14 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
             qxl_init(pci_bus, phys_ram_base + qxl_ram, qxl_ram, qxl_total_mem_size, qxl_ram_size);
         }
 #endif
+#ifdef CONFIG_VMWARE
     } else if (vmsvga_enabled) {
         if (pci_enabled)
             pci_vmsvga_init(pci_bus, ds, phys_ram_base + vga_ram_addr,
                             vga_ram_addr, vga_ram_size);
         else
             fprintf(stderr, "%s: vmware_vga: no PCI bus\n", __FUNCTION__);
+#endif
     } else {
         if (pci_enabled) {
             pci_vga_init(pci_bus, ds, phys_ram_base + vga_ram_addr,

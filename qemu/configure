@@ -182,6 +182,7 @@ usb_wacom="yes"
 usb_serial="yes"
 usb_net="yes"
 usb_bluez="yes"
+vmware="yes"
 x86_only_generic_cpus="no"
 kvm="yes"
 kvm_nested="no"
@@ -435,6 +436,8 @@ for opt do
   ;;
   --disable-usb-bluez) usb_bluez="no"
   ;;
+  --disable-vmware) vmware="no"
+  ;;
   --disable-x86-non-generic-cpus) x86_only_generic_cpus="yes"
   ;;
   --disable-kvm) kvm="no"
@@ -595,6 +598,7 @@ echo "  --disable-isapc          disable isapc machine"
 echo "  --disable-usb-msd        disable usb storage devices"
 echo "  --disable-usb-wacom      disable usb wacom tablets"
 echo "  --disable-usb-serial     disable usb serial"
+echo "  --disable-vmware         disable vmware drivers"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -1333,6 +1337,7 @@ echo "USB wacom         $usb_wacom"
 echo "USB serial        $usb_serial"
 echo "USB net           $usb_net"
 echo "USB bluez         $usb_bluez"
+echo "VMware drivers    $vmware"
 echo "Only generic cpus $x86_only_generic_cpus"
 
 if test $sdl_too_old = "yes"; then
@@ -1652,6 +1657,10 @@ fi
 if test "$usb_bluez" = "yes" ; then
   echo "CONFIG_USB_BLUEZ=yes" >> $config_mak
   echo "#define CONFIG_USB_BLUEZ 1" >> $config_h
+fi
+if test "$vmware" = "yes" ; then
+  echo "CONFIG_VMWARE=yes" >> $config_mak
+  echo "#define CONFIG_VMWARE 1" >> $config_h
 fi
 if test "$x86_only_generic_cpus" = "yes" ; then
   echo "#define CONFIG_X86_ONLY_GENERIC_CPUS 1" >> $config_h
