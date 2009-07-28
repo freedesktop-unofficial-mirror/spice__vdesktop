@@ -529,7 +529,7 @@ USBDevice *usb_msd_init(const char *filename)
             int len = MIN(p1 - p2, sizeof(fmt));
             pstrcpy(fmt, len, p2);
 
-            drv = bdrv_find_format(fmt);
+            drv = bdrv_find_supported_format(fmt);
             if (!drv) {
                 printf("invalid format %s\n", fmt);
                 return NULL;

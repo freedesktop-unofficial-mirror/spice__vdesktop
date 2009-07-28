@@ -64,6 +64,8 @@ BlockDriverState *bdrv_first;
 
 static BlockDriver *first_drv;
 
+static int only_supported_bdrv;
+
 int path_is_absolute(const char *path)
 {
     const char *p;
@@ -173,6 +175,27 @@ BlockDriver *bdrv_find_format(const char *format_name)
             return drv1;
     }
     return NULL;
+}
+
+static int bdrv_is_supported(BlockDriver *drv)
+{
+    static const char *supported[] = {
+        "raw", "qcow2", "nbd", "host_device", NULL
+    };
+    const char **p;
+
+    for (p = supported; *p; p++) {
+        if (!strcmp(drv->format_name, *p)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+BlockDriver *bdrv_find_supported_format(const char *format_name)
+{
+    BlockDriver *drv = bdrv_find_format(format_name);
+    return drv && bdrv_is_supported(drv) ? drv : NULL;
 }
 
 int bdrv_create2(BlockDriver *drv,
@@ -431,7 +454,10 @@ int bdrv_open2(BlockDriverState *bs, const char *filename, int flags,
         open_flags = BDRV_O_RDWR | (flags & BDRV_O_CACHE_MASK);
     else
         open_flags = flags & ~(BDRV_O_FILE | BDRV_O_SNAPSHOT);
-    ret = drv->bdrv_open(bs, filename, open_flags);
+    if (only_supported_bdrv && !bdrv_is_supported(drv))
+        ret = -ENOTSUP;
+    else
+        ret = drv->bdrv_open(bs, filename, open_flags);
     if ((ret == -EACCES || ret == -EPERM) && !(flags & BDRV_O_FILE)) {
         ret = drv->bdrv_open(bs, filename, open_flags & ~BDRV_O_RDWR);
         bs->read_only = 1;
@@ -1555,6 +1581,12 @@ void bdrv_init(void)
     bdrv_register(&bdrv_qcow2);
     bdrv_register(&bdrv_parallels);
     bdrv_register(&bdrv_nbd);
+}
+
+void bdrv_init_supported_only(void)
+{
+    only_supported_bdrv = 1;
+    bdrv_init();
 }
 
 void *qemu_aio_get(BlockDriverState *bs, BlockDriverCompletionFunc *cb,

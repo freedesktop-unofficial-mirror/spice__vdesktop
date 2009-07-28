@@ -54,7 +54,9 @@ void bdrv_info(void);
 void bdrv_info_stats(void);
 
 void bdrv_init(void);
+void bdrv_init_supported_only(void);
 BlockDriver *bdrv_find_format(const char *format_name);
+BlockDriver *bdrv_find_supported_format(const char *format_name);
 int bdrv_create(BlockDriver *drv,
                 const char *filename, int64_t size_in_sectors,
                 const char *backing_file, int flags);

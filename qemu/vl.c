@@ -2548,7 +2548,7 @@ int drive_init(struct drive_opt *arg, int snapshot,
             fprintf(stderr, "\n");
 	    return -1;
         }
-        drv = bdrv_find_format(buf);
+        drv = bdrv_find_supported_format(buf);
         if (!drv) {
             fprintf(stderr, "qemu: '%s' invalid format\n", buf);
             return -1;
@@ -6160,7 +6160,7 @@ int main(int argc, char **argv, char **envp)
 
     ksm_register_memory();
 
-    bdrv_init();
+    bdrv_init_supported_only();
 
     /* we always create the cdrom drive, even if no disk is there */
 

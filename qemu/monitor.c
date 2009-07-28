@@ -543,7 +543,7 @@ static void do_change_block(const char *device, const char *filename, const char
         return;
     }
     if (fmt) {
-        drv = bdrv_find_format(fmt);
+        drv = bdrv_find_supported_format(fmt);
         if (!drv) {
             term_printf("invalid format %s\n", fmt);
             return;
