@@ -1986,7 +1986,7 @@ smbios_init_type_1(void *start)
     p->header.length = sizeof(struct smbios_type_1);
     p->header.handle = 0x100;
 
-    load_str_field_or_skip(1, manufacturer_str);
+    load_str_field_with_default(1, manufacturer_str, "Red Hat");
     load_str_field_or_skip(1, product_name_str);
     load_str_field_or_skip(1, version_str);
     load_str_field_or_skip(1, serial_number_str);
@@ -1999,7 +1999,7 @@ smbios_init_type_1(void *start)
     p->wake_up_type = 0x06; /* power switch */
 
     load_str_field_or_skip(1, sku_number_str);
-    load_str_field_or_skip(1, family_str);
+    load_str_field_with_default(1, family_str, "Red Hat Enterprise Linux");
 
     *end = 0;
     end++;
