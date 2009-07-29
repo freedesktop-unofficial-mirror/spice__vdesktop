@@ -3325,6 +3325,8 @@ static void piix3_reset(void *opaque)
 
     for (i = 0; i < 2; i++)
         ide_dma_cancel(&d->bmdma[i]);
+    for (i = 0; i < 4; i++)
+        ide_reset(&d->ide_if[i]);
 
     pci_conf[0x04] = 0x00;
     pci_conf[0x05] = 0x00;
@@ -3359,9 +3361,6 @@ void pci_piix3_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     pci_conf[0x0b] = 0x01; // class_base = PCI_mass_storage
     pci_conf[0x0e] = 0x00; // header_type
 
-    qemu_register_reset(piix3_reset, d);
-    piix3_reset(d);
-
     pci_register_io_region((PCIDevice *)d, 4, 0x10,
                            PCI_ADDRESS_SPACE_IO, bmdma_map);
 
@@ -3373,6 +3372,9 @@ void pci_piix3_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     for (i = 0; i < 4; i++)
         if (hd_table[i])
             hd_table[i]->private = &d->dev;
+
+    qemu_register_reset(piix3_reset, d);
+    piix3_reset(d);
 
     register_savevm("ide", 0, 2, pci_ide_save, pci_ide_load, d);
 }
@@ -3402,9 +3404,6 @@ void pci_piix4_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     pci_conf[0x0b] = 0x01; // class_base = PCI_mass_storage
     pci_conf[0x0e] = 0x00; // header_type
 
-    qemu_register_reset(piix3_reset, d);
-    piix3_reset(d);
-
     pci_register_io_region((PCIDevice *)d, 4, 0x10,
                            PCI_ADDRESS_SPACE_IO, bmdma_map);
 
@@ -3412,6 +3411,9 @@ void pci_piix4_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     ide_init2(&d->ide_if[2], hd_table[2], hd_table[3], pic[15]);
     ide_init_ioport(&d->ide_if[0], 0x1f0, 0x3f6);
     ide_init_ioport(&d->ide_if[2], 0x170, 0x376);
+
+    qemu_register_reset(piix3_reset, d);
+    piix3_reset(d);
 
     register_savevm("ide", 0, 2, pci_ide_save, pci_ide_load, d);
 }
