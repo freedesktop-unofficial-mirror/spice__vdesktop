@@ -663,6 +663,7 @@ static void qxl_reset(PCIQXLDevice *d)
         d->state.mode = QXL_MODE_UNDEFINED;
         qxl_notify_mode_change(d);
     }
+    qemu_set_irq(d->pci_dev.irq[0], irq_level(d));
 }
 
 static inline void vdi_port_set_dirty(PCIVDIPortDevice *d, void *start, uint32_t length)
@@ -1788,6 +1789,7 @@ static void vdi_port_reset_handler(void *opaque)
         vdi_port_dev_disconnect(d);
     }
     vdi_port_reset(d);
+    qemu_set_irq(d->pci_dev.irq[0], vdi_port_irq_level(d));
 }
 
 static void vdi_port_save(QEMUFile* f, void* opaque)
