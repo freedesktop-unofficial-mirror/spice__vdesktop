@@ -50,9 +50,10 @@ recurse-all: $(SUBDIR_RULES)
 BLOCK_OBJS=cutils.o qemu-malloc.o
 BLOCK_OBJS+=block-cow.o block-qcow.o block-vmdk.o block-cloop.o
 BLOCK_OBJS+=block-dmg.o block-bochs.o block-vpc.o block-vvfat.o
-BLOCK_OBJS+=block-qcow2.o block-parallels.o block-nbd.o
-BLOCK_OBJS+=nbd.o block.o aio.o
-
+BLOCK_OBJS+=block-qcow2.o block-parallels.o block.o aio.o
+ifdef CONFIG_NBD
+BLOCK_OBJS+=nbd.o block-nbd.o
+endif
 ifdef CONFIG_WIN32
 BLOCK_OBJS += block-raw-win32.o
 else
@@ -275,7 +276,9 @@ ifndef CONFIG_WIN32
 	mkdir -p "$(DESTDIR)$(mandir)/man1"
 	$(INSTALL) qemu.1 qemu-img.1 "$(DESTDIR)$(mandir)/man1"
 	mkdir -p "$(DESTDIR)$(mandir)/man8"
+ifdef CONFIG_NBD
 	$(INSTALL) qemu-nbd.8 "$(DESTDIR)$(mandir)/man8"
+endif
 endif
 
 install: all $(if $(BUILD_DOCS),install-doc)

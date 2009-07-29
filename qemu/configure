@@ -183,6 +183,7 @@ usb_serial="yes"
 usb_net="yes"
 usb_bluez="yes"
 vmware="yes"
+nbd="yes"
 x86_only_generic_cpus="no"
 kvm="yes"
 kvm_nested="no"
@@ -438,6 +439,8 @@ for opt do
   ;;
   --disable-vmware) vmware="no"
   ;;
+  --disable-nbd) nbd="no"
+  ;;
   --disable-x86-non-generic-cpus) x86_only_generic_cpus="yes"
   ;;
   --disable-kvm) kvm="no"
@@ -599,6 +602,7 @@ echo "  --disable-usb-msd        disable usb storage devices"
 echo "  --disable-usb-wacom      disable usb wacom tablets"
 echo "  --disable-usb-serial     disable usb serial"
 echo "  --disable-vmware         disable vmware drivers"
+echo "  --disable-nbd            disable nbd support"
 echo "  --disable-kvm            disable KVM acceleration support"
 echo "  --disable-nptl           disable usermode NPTL support"
 echo "  --enable-system          enable all system emulation targets"
@@ -1338,6 +1342,7 @@ echo "USB serial        $usb_serial"
 echo "USB net           $usb_net"
 echo "USB bluez         $usb_bluez"
 echo "VMware drivers    $vmware"
+echo "NBD support       $nbd"
 echo "bluetooth support $bluez"
 echo "Only generic cpus $x86_only_generic_cpus"
 
@@ -1663,6 +1668,10 @@ if test "$vmware" = "yes" ; then
   echo "CONFIG_VMWARE=yes" >> $config_mak
   echo "#define CONFIG_VMWARE 1" >> $config_h
 fi
+if test "$nbd" = "yes" ; then
+  echo "CONFIG_NBD=yes" >> $config_mak
+  echo "#define CONFIG_NBD 1" >> $config_h
+fi
 if test "$x86_only_generic_cpus" = "yes" ; then
   echo "#define CONFIG_X86_ONLY_GENERIC_CPUS 1" >> $config_h
 fi
@@ -1730,7 +1739,10 @@ tools=
 if test `expr "$target_list" : ".*softmmu.*"` != 0 ; then
   tools="qemu-img\$(EXESUF) $tools"
   if [ "$linux" = "yes" ] ; then
-      tools="qemu-nbd\$(EXESUF) qemu-io\$(EXESUF) $tools"
+    if test "$nbd" = "yes" ; then
+      tools="qemu-nbd\$(EXESUF) $tools"
+    fi
+    tools="qemu-io\$(EXESUF) $tools"
   fi
 fi
 echo "TOOLS=$tools" >> $config_mak

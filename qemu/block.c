@@ -180,7 +180,7 @@ BlockDriver *bdrv_find_format(const char *format_name)
 static int bdrv_is_supported(BlockDriver *drv)
 {
     static const char *supported[] = {
-        "raw", "qcow2", "nbd", "host_device", NULL
+        "raw", "qcow2", "host_device", NULL
     };
     const char **p;
 
@@ -1580,7 +1580,9 @@ void bdrv_init(void)
     bdrv_register(&bdrv_vvfat);
     bdrv_register(&bdrv_qcow2);
     bdrv_register(&bdrv_parallels);
+#ifdef CONFIG_NBD
     bdrv_register(&bdrv_nbd);
+#endif
 }
 
 void bdrv_init_supported_only(void)
