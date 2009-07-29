@@ -1414,6 +1414,10 @@ static void qxl_vm_change_state_handler(void *opaque, int running)
 
     printf("QXL: %s: running=%d\n", __FUNCTION__, running);
 
+    if (running == d->state.running) {
+        return;
+    }
+
     if (running) {
         d->state.running = TRUE;
         qemu_set_fd_handler(d->pipe_fd[0], qxl_pipe_read, NULL, d);
@@ -1824,6 +1828,10 @@ static int vdi_port_load(QEMUFile* f,void* opaque,int version_id)
 static void vdi_port_vm_change_state_handler(void *opaque, int running)
 {
     PCIVDIPortDevice* d=(PCIVDIPortDevice*)opaque;
+
+    if (running == d->running ) {
+        return;
+    }
 
     if (running) {
         d->running = TRUE;
