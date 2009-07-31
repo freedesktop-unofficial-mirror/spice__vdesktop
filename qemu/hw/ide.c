@@ -3381,7 +3381,7 @@ void pci_piix3_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     qemu_register_reset(piix3_reset, d);
     piix3_reset(d);
 
-    register_savevm("ide", 0, 2, pci_ide_save, pci_ide_load, d);
+    register_savevm("ide", 0, 3, pci_ide_save, pci_ide_load, d);
 }
 
 /* hd_table must contain 4 block drivers */
@@ -3420,7 +3420,7 @@ void pci_piix4_ide_init(PCIBus *bus, BlockDriverState **hd_table, int devfn,
     qemu_register_reset(piix3_reset, d);
     piix3_reset(d);
 
-    register_savevm("ide", 0, 2, pci_ide_save, pci_ide_load, d);
+    register_savevm("ide", 0, 3, pci_ide_save, pci_ide_load, d);
 }
 
 /***********************************************************/
