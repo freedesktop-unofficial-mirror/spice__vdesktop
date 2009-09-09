@@ -183,6 +183,13 @@ static void free_clusters(BlockDriverState *bs,
                           int64_t offset, int64_t size);
 static int check_refcounts(BlockDriverState *bs);
 
+static inline int64_t align_offset(int64_t offset, int n)
+{
+    offset = (offset + n - 1) & ~(n - 1);
+    return offset;
+}
+
+
 static int qcow_probe(const uint8_t *buf, int buf_size, const char *filename)
 {
     const QCowHeader *cow_header = (const void *)buf;
@@ -334,7 +341,8 @@ static int qcow_open(BlockDriverState *bs, const char *filename, int flags)
     if (s->l1_size < s->l1_vm_state_index)
         goto fail;
     s->l1_table_offset = header.l1_table_offset;
-    s->l1_table = qemu_malloc(s->l1_size * sizeof(uint64_t));
+    s->l1_table = qemu_mallocz(
+        align_offset(s->l1_size * sizeof(uint64_t), 512));
     if (!s->l1_table)
         goto fail;
     if (bdrv_pread(s->hd, s->l1_table_offset, s->l1_table, s->l1_size * sizeof(uint64_t)) !=
@@ -526,12 +534,6 @@ static inline int l2_cache_new_entry(BlockDriverState *bs)
     return min_index;
 }
 
-static int64_t align_offset(int64_t offset, int n)
-{
-    offset = (offset + n - 1) & ~(n - 1);
-    return offset;
-}
-
 static int grow_l1_table(BlockDriverState *bs, int min_size)
 {
     BDRVQcowState *s = bs->opaque;
@@ -551,7 +553,7 @@ static int grow_l1_table(BlockDriverState *bs, int min_size)
 #endif
 
     new_l1_size2 = sizeof(uint64_t) * new_l1_size;
-    new_l1_table = qemu_mallocz(new_l1_size2);
+    new_l1_table = qemu_mallocz(align_offset(new_l1_size2, 512));
     if (!new_l1_table)
         return -ENOMEM;
     memcpy(new_l1_table, s->l1_table, s->l1_size * sizeof(uint64_t));
@@ -650,6 +652,31 @@ static uint64_t *l2_load(BlockDriverState *bs, uint64_t l2_offset)
 }
 
 /*
+ * Writes one sector of the L1 table to the disk (can't update single entries
+ * and we really don't want bdrv_pread to perform a read-modify-write)
+ */
+#define L1_ENTRIES_PER_SECTOR (512 / 8)
+static int write_l1_entry(BDRVQcowState *s, int l1_index)
+{
+    uint64_t buf[L1_ENTRIES_PER_SECTOR];
+    int l1_start_index;
+    int i;
+
+    l1_start_index = l1_index & ~(L1_ENTRIES_PER_SECTOR - 1);
+    for (i = 0; i < L1_ENTRIES_PER_SECTOR; i++) {
+        buf[i] = cpu_to_be64(s->l1_table[l1_start_index + i]);
+    }
+
+    if (bdrv_pwrite(s->hd, s->l1_table_offset + 8 * l1_start_index,
+        buf, sizeof(buf)) != sizeof(buf))
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
  * l2_allocate
  *
  * Allocate a new l2 entry in the file. If l1_index points to an already
@@ -663,7 +690,7 @@ static uint64_t *l2_allocate(BlockDriverState *bs, int l1_index)
 {
     BDRVQcowState *s = bs->opaque;
     int min_index;
-    uint64_t old_l2_offset, tmp;
+    uint64_t old_l2_offset;
     uint64_t *l2_table, l2_offset;
 
     old_l2_offset = s->l1_table[l1_index];
@@ -675,11 +702,9 @@ static uint64_t *l2_allocate(BlockDriverState *bs, int l1_index)
     /* update the L1 entry */
 
     s->l1_table[l1_index] = l2_offset | QCOW_OFLAG_COPIED;
-
-    tmp = cpu_to_be64(l2_offset | QCOW_OFLAG_COPIED);
-    if (bdrv_pwrite(s->hd, s->l1_table_offset + l1_index * sizeof(tmp),
-                    &tmp, sizeof(tmp)) != sizeof(tmp))
+    if (write_l1_entry(s, l1_index) < 0) {
         return NULL;
+    }
 
     /* allocate a new entry in the l2 cache */
 
@@ -1829,7 +1854,7 @@ static int update_snapshot_refcount(BlockDriverState *bs,
     l1_size2 = l1_size * sizeof(uint64_t);
     l1_allocated = 0;
     if (l1_table_offset != s->l1_table_offset) {
-        l1_table = qemu_malloc(l1_size2);
+        l1_table = qemu_mallocz(align_offset(l1_size2, 512));
         if (!l1_table)
             goto fail;
         l1_allocated = 1;
