@@ -181,7 +181,7 @@ usb_msd="yes"
 usb_wacom="yes"
 usb_serial="yes"
 usb_net="yes"
-usb_bluez="yes"
+usb_bluez="no"
 vmware="yes"
 nbd="yes"
 x86_only_generic_cpus="no"
@@ -841,6 +841,7 @@ EOF
 	kvm_cap_device_assignment="yes"
     fi
 fi
+kvm_cap_device_assignment="no"
 
 # libpci probe for kvm_cap_device_assignment
 if test $kvm_cap_device_assignment = "yes" ; then

@@ -49,7 +49,7 @@ all:: header-link prerequisite
 		"$$@"
 ifndef SKIP_KSM
 	cp Module.symvers ksm
-	$(MAKE) -C $(KERNELDIR) M=`pwd`/ksm \
+#	$(MAKE) -C $(KERNELDIR) M=`pwd`/ksm \
 		LINUXINCLUDE="-I`pwd`/include -Iinclude \
 		$(if $(KERNELSOURCEDIR),-Iinclude2 -I$(KERNELSOURCEDIR)/include) \
 		-Iarch/${ARCH_DIR}/include -I`pwd`/include-compat \
