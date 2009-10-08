@@ -137,12 +137,14 @@ static void end_wave(void)
 typedef struct InterfaceVoiceOut {
     HWVoiceOut base;
     uint64_t prev_ticks;
+    int active;
 } InterfaceVoiceOut;
 
 typedef struct InterfaceVoiceIn {
-    HWVoiceOut base;
+    HWVoiceIn base;
     uint64_t prev_ticks;
     uint32_t samples[LINE_IN_SAMPLES];
+    int active;
 } InterfaceVoiceIn;
 
 static struct audio_option options[] = {
@@ -161,7 +163,7 @@ typedef struct Interface_audio {
     uint32_t silence[LINE_IN_SAMPLES];
 
     InterfaceVoiceOut *voic_out;
-    HWVoiceIn *voic_in;
+    InterfaceVoiceIn *voic_in;
 } Interface_audio;
 
 static Interface_audio driver = {
@@ -187,7 +189,7 @@ static VDObjectRef interface_play_plug(PlaybackInterface *playback, PlaybackPlug
     }
     ASSERT(plug && playback == driver.play_interface && enabled);
     driver.play_plug = plug;
-    *enabled = driver.voic_out ? driver.voic_out->base.enabled : 0;
+    *enabled = driver.voic_out ? driver.voic_out->active : 0;
     return (VDObjectRef)plug;
 }
 
@@ -233,7 +235,7 @@ static VDObjectRef interface_record_plug(RecordInterface *recorder, RecordPlug* 
     ASSERT(!driver.record_plug && plug && recorder == driver.record_interface
            && enabled);
     driver.record_plug = plug;
-    *enabled = driver.voic_in ? driver.voic_in->enabled : 0;
+    *enabled = driver.voic_in ? driver.voic_in->active : 0;
     return (VDObjectRef)plug;
 }
 
@@ -343,6 +345,7 @@ static int line_out_init(HWVoiceOut *hw, struct audsettings *as)
     audio_pcm_init_info(&hw->info, &settings);
     hw->samples = LINE_OUT_SAMPLES;
     driver.voic_out = voice_out;
+    voice_out->active = 0;
     return 0;
 }
 
@@ -423,12 +426,20 @@ static int line_out_ctl(HWVoiceOut *hw, int cmd, ...)
 
     switch (cmd) {
     case VOICE_ENABLE:
+        if (voice_out->active) {
+            break;
+        }
+        voice_out->active = 1;
         voice_out->prev_ticks = get_monotonic_time();
         if (driver.play_plug) {
             driver.play_plug->start(driver.play_plug);
         }
         break;
     case VOICE_DISABLE:
+        if (!voice_out->active) {
+            break;
+        }
+        voice_out->active = 0;
         if (driver.play_plug) {
             if (driver.play_frame) {
                 uint32_t *frame = driver.play_frame;
@@ -449,6 +460,7 @@ static int line_out_ctl(HWVoiceOut *hw, int cmd, ...)
 
 static int line_in_init(HWVoiceIn *hw, struct audsettings *as)
 {
+    InterfaceVoiceIn *voice_in = (InterfaceVoiceIn *)hw;
     struct audsettings settings;
 
     dprintf("");
@@ -466,7 +478,8 @@ static int line_in_init(HWVoiceIn *hw, struct audsettings *as)
 
     audio_pcm_init_info(&hw->info, &settings);
     hw->samples = LINE_IN_SAMPLES;
-    driver.voic_in = hw;
+    driver.voic_in = voice_in;
+    voice_in->active = 0;
     return 0;
 }
 
@@ -545,6 +558,10 @@ static int line_in_ctl(HWVoiceIn *hw, int cmd, ...)
 
     switch (cmd) {
     case VOICE_ENABLE:
+        if (voice_in->active) {
+            break;
+        }
+        voice_in->active = 1;
 #ifdef WAVE_CAPTURE
         start_wave();
 #endif
@@ -554,6 +571,10 @@ static int line_in_ctl(HWVoiceIn *hw, int cmd, ...)
         }
         break;
     case VOICE_DISABLE:
+        if (!voice_in->active) {
+            break;
+        }
+        voice_in->active = 0;
 #ifdef WAVE_CAPTURE
         end_wave();
 #endif
