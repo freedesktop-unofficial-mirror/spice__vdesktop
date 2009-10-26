@@ -22,7 +22,9 @@
  * THE SOFTWARE.
  */
 
+#if 0
 #include "../kernel/ksm/ksm.h"
+#endif
 #include "hw/hw.h"
 #include "hw/boards.h"
 #include "hw/usb.h"
@@ -5039,6 +5041,8 @@ static void termsig_setup(void)
 
 #endif
 
+#if 0
+
 int ksm_register_memory(void)
 {
     int fd;
@@ -5069,6 +5073,8 @@ out_free:
 out:
     return r;
 }
+
+#endif
 
 int main(int argc, char **argv, char **envp)
 {
@@ -6158,7 +6164,9 @@ int main(int argc, char **argv, char **envp)
     /* init the dynamic translator */
     cpu_exec_init_all(tb_size * 1024 * 1024);
 
+#if 0
     ksm_register_memory();
+#endif
 
     bdrv_init_supported_only();
 
