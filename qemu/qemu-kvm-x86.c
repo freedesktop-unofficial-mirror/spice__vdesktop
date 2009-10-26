@@ -18,7 +18,6 @@
 #include <libkvm.h>
 #include <pthread.h>
 #include <sys/utsname.h>
-#include <linux/kvm_para.h>
 
 #define MSR_IA32_TSC		0x10
 
@@ -474,18 +473,6 @@ struct kvm_para_features {
 	int cap;
 	int feature;
 } para_features[] = {
-#ifdef KVM_CAP_CLOCKSOURCE
-	{ KVM_CAP_CLOCKSOURCE, KVM_FEATURE_CLOCKSOURCE },
-#endif
-#ifdef KVM_CAP_NOP_IO_DELAY
-	{ KVM_CAP_NOP_IO_DELAY, KVM_FEATURE_NOP_IO_DELAY },
-#endif
-#ifdef KVM_CAP_PV_MMU
-	{ KVM_CAP_PV_MMU, KVM_FEATURE_MMU_OP },
-#endif
-#ifdef KVM_CAP_CR3_CACHE
-	{ KVM_CAP_CR3_CACHE, KVM_FEATURE_CR3_CACHE },
-#endif
 	{ -1, -1 }
 };
 
