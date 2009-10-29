@@ -468,3 +468,22 @@ int schedule_hrtimeout(ktime_t *expires, const enum hrtimer_mode mode)
 }
 
 #endif
+
+#ifdef kvm_trace_ioctl
+#undef kvm_trace_ioctl
+#endif
+
+#ifdef kvm_trace_cleanup
+#undef kvm_trace_cleanup
+#endif
+
+int kvm_trace_ioctl(unsigned int ioctl, unsigned long arg)
+{
+        return -EINVAL;
+}
+
+void kvm_trace_cleanup(void)
+{
+}
+
+
