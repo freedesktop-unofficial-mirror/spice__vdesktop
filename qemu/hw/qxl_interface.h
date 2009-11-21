@@ -21,16 +21,30 @@ typedef struct DrawArea{
 } DrawArea;
 
 typedef struct QXLDevInfo {
-    long phys_delta;
-    unsigned long phys_start;
-    unsigned long phys_end;
     uint32_t x_res;
     uint32_t y_res;
     int use_hardware_cursor;
     uint32_t bits;
     DrawArea draw_area;
     uint32_t ram_size;
+    uint32_t num_memslots;
+    uint8_t mem_generation_bits;
+    uint8_t mem_slot_bits;
 } QXLDevInfo;
+
+typedef struct QXLDevInitInfo {
+    uint32_t num_memslots;
+    uint8_t memslot_gen_bits;
+    uint8_t memslot_id_bits;
+} QXLDevInitInfo;
+
+typedef struct QXLDevMemSlot {
+    uint32_t slot_id;
+    uint32_t generation;
+    unsigned long virt_start;
+    unsigned long virt_end;
+    uint64_t addr_delta;
+} QXLDevMemSlot;
 
 typedef struct QXLWorker QXLWorker;
 struct QXLWorker {
@@ -43,11 +57,15 @@ struct QXLWorker {
     void (*start)(QXLWorker *worker);
     void (*stop)(QXLWorker *worker);
     void (*update_area)(QXLWorker *worker);
+    void (*add_memslot)(QXLWorker *worker, QXLDevMemSlot *slot);
+    void (*del_memslot)(QXLWorker *worker, uint32_t slot_id);
+    void (*reset_memslots)(QXLWorker *worker);
 };
 #endif
 
 typedef unsigned long QXLDevRef;
 
+void qxl_get_init_info(QXLDevRef dev_ref, QXLDevInitInfo *info);
 void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info);
 int qxl_get_command(QXLDevRef dev_ref, QXLCommand *cmd);
 void qxl_release_resource(QXLDevRef dev_ref, QXLReleaseInfo *release_info);

@@ -829,6 +829,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
     int ret, linux_boot, i;
     ram_addr_t ram_addr, vga_ram_addr, bios_offset, vga_bios_offset;
     ram_addr_t below_4g_mem_size, above_4g_mem_size = 0;
+    ram_addr_t below_4g_ram_addr, above_4g_ram_addr = 0;
     int bios_size, isa_bios_size, vga_bios_size, opt_rom_offset;
     int pci_option_rom_offset;
     PCIBus *pci_bus;
@@ -876,6 +877,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
      */
     ram_addr = qemu_ram_alloc(0x100000 - 0xa0000);
     ram_addr = qemu_ram_alloc(below_4g_mem_size - 0x100000);
+    below_4g_ram_addr = ram_addr;
     cpu_register_physical_memory(0x100000,
                  below_4g_mem_size - 0x100000,
                  ram_addr);
@@ -883,6 +885,7 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
     /* above 4giga memory allocation */
     if (above_4g_mem_size > 0) {
         ram_addr = qemu_ram_alloc(above_4g_mem_size);
+        above_4g_ram_addr = ram_addr;
         if (hpagesize) {
             if (ram_addr & (hpagesize-1)) {
                 unsigned long aligned_addr;
@@ -1037,9 +1040,23 @@ static void pc_init1(ram_addr_t ram_size, int vga_ram_size,
         isa_vga_init(ds, phys_ram_base + vga_ram_addr,
                          vga_ram_addr, vga_ram_size);
         for (i = 0; i < num_qxl_device; i++) {
+            QXLAddressRange address_ranges[2];
+
             uint32_t qxl_total_mem_size = qxl_get_total_mem_size(qxl_ram_size);
             ram_addr_t qxl_ram = qemu_ram_alloc(qxl_total_mem_size);
-            qxl_init(pci_bus, phys_ram_base + qxl_ram, qxl_ram, qxl_total_mem_size, qxl_ram_size);
+
+            address_ranges[0].phys_start = 0x100000;
+            address_ranges[0].phys_end = 0x100000 + below_4g_mem_size;
+            address_ranges[0].virt_start = below_4g_ram_addr + phys_ram_base;
+            address_ranges[0].virt_end = address_ranges[1].virt_start + below_4g_mem_size;
+
+            address_ranges[1].phys_start = 0x100000000ULL;
+            address_ranges[1].phys_end = 0x100000000ULL + above_4g_mem_size;
+            address_ranges[1].virt_start = above_4g_ram_addr + phys_ram_base;
+            address_ranges[1].virt_end = address_ranges[2].virt_start + above_4g_mem_size;
+
+            qxl_init(pci_bus, phys_ram_base + qxl_ram, qxl_ram, qxl_total_mem_size, qxl_ram_size,
+                     address_ranges, 2);
         }
 #endif
 #ifdef CONFIG_VMWARE

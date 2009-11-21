@@ -30,6 +30,11 @@
 	exit(-1);                                               \
 }
 
+#define PANIC_ON(x) if ((x)) {                         \
+    printf("%s: PANIC %s failed\n", __FUNCTION__, #x); \
+    exit(-1);                                          \
+}
+
 #undef ALIGN
 #define ALIGN(a, b) (((a) + ((b) - 1)) & ~((b) - 1))
 
@@ -80,6 +85,18 @@ typedef struct __attribute__ ((__packed__)) PCIConf_s /*little-endian*/ {
     uint8_t max_letency;
 } PCIConf;
 
+#define NUM_MEMSLOTS 256
+#define MEMSLOT_GENERATION_BITS 8
+#define MEMSLOT_SLOT_BITS 8
+
+typedef struct MemSlot {
+    int active;
+    unsigned long virt_start;
+    unsigned long virt_end;
+    int64_t address_delta;
+    uint8_t generation;
+} MemSlot;
+
 enum {
     QXL_MODE_UNDEFINED,
     QXL_MODE_VGA,
@@ -98,6 +115,11 @@ typedef struct QXLState {
     uint64_t ram_offset;
     uint32_t ram_size;
     uint64_t ram_phys_addr;
+
+    QXLAddressRange *address_ranges;
+    uint8_t num_ranges;
+
+    MemSlot mem_slots[NUM_MEMSLOTS];
 
     uint8_t *vram;
     unsigned long vram_offset;
@@ -323,6 +345,13 @@ static void set_dreaw_area(PCIQXLDevice *d, QXLDevInfo *info)
     info->draw_area.heigth = info->y_res;
 }
 
+static void _qxl_get_init_info(PCIQXLDevice *d, QXLDevInitInfo *info)
+{
+    info->memslot_gen_bits = MEMSLOT_GENERATION_BITS;
+    info->memslot_id_bits = MEMSLOT_SLOT_BITS;
+    info->num_memslots = NUM_MEMSLOTS;
+}
+
 static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
 {
     QXLState *state = &d->state;
@@ -336,9 +365,6 @@ static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
         info->bits = qxl_vga.ds->depth;
         info->use_hardware_cursor = FALSE;
 
-        info->phys_start = 0;
-        info->phys_end = ~info->phys_start;
-        info->phys_delta = 0;
         set_dreaw_area(d, info);
         return;
     }
@@ -350,9 +376,6 @@ static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
     info->bits = mode->bits;
     info->use_hardware_cursor = TRUE;
 
-    info->phys_start = (unsigned long)state->ram_start + state->rom->pages_offset;
-    info->phys_end = (unsigned long)state->ram_start + state->ram_size;
-    info->phys_delta = (long)state->ram_start - state->ram_phys_addr;
     set_dreaw_area(d, info);
 }
 
@@ -584,6 +607,50 @@ static void qxl_notify_mode_change(PCIQXLDevice *d)
 #endif
 }
 
+static void qxl_create_host_memslot(PCIQXLDevice *d)
+{
+    MemSlot *device_slot;
+    QXLDevMemSlot qxl_dev_slot;
+
+    printf("%s\n", __FUNCTION__);
+
+    PANIC_ON(d->state.mem_slots[0].active);
+
+    device_slot = &d->state.mem_slots[0];
+    device_slot->active = TRUE;
+    device_slot->address_delta = 0;
+    device_slot->virt_start = 0;
+    device_slot->virt_end = ~(unsigned long)0;
+
+    qxl_dev_slot.slot_id = 0;
+    qxl_dev_slot.addr_delta = device_slot->address_delta;
+    qxl_dev_slot.virt_start = device_slot->virt_start;
+    qxl_dev_slot.virt_end = device_slot->virt_end;
+    qxl_dev_slot.generation = device_slot->generation = 0;
+
+    d->worker->add_memslot(d->worker, &qxl_dev_slot);
+}
+
+static void qxl_init_memslots(PCIQXLDevice *d)
+{
+    int i;
+
+    for (i = 1; i < NUM_MEMSLOTS; ++i) {
+        d->state.mem_slots[i].generation = 1;
+    }
+}
+
+static void qxl_reset_memslots(PCIQXLDevice *d)
+{
+    int i;
+
+    for (i = 0; i < NUM_MEMSLOTS; ++i) {
+        d->state.mem_slots[i].active = FALSE;
+    }
+
+    d->worker->reset_memslots(d->worker);
+}
+
 static void qxl_set_mode(PCIQXLDevice *d, uint32_t mode)
 {
     if (mode > sizeof(qxl_modes) / sizeof(QXLMode)) {
@@ -656,6 +723,7 @@ static void qxl_reset(PCIQXLDevice *d)
     printf("%s\n", __FUNCTION__);
     qxl_detach(d);
     qxl_reset_state(d);
+
     if (QXL_SHARED_VGA_MODE || !d->id) {
         qxl_enter_vga_mode(d);
         d->worker->attach(d->worker);
@@ -664,6 +732,13 @@ static void qxl_reset(PCIQXLDevice *d)
         qxl_notify_mode_change(d);
     }
     qemu_set_irq(d->pci_dev.irq[0], irq_level(d));
+}
+
+static void qxl_hard_reset(PCIQXLDevice *d)
+{
+    qxl_reset(d);
+    qxl_reset_memslots(d);
+    qxl_create_host_memslot(d);
 }
 
 static inline void vdi_port_set_dirty(PCIVDIPortDevice *d, void *start, uint32_t length)
@@ -905,6 +980,141 @@ static void vdi_port_dev_notify(PCIVDIPortDevice *d)
 #endif
 }
 
+static inline int in_range_start(unsigned long start, unsigned long range_start,
+                                 unsigned long range_end) {
+    if (start >= range_start && start < range_end) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static inline int in_range_end(unsigned long end, unsigned long range_start,
+                               unsigned long range_end) {
+    if (end > range_start && end <= range_end) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static inline int address_in_range(unsigned long start, unsigned long end, QXLAddressRange *range)
+{
+    if (in_range_start(start, range->phys_start, range->phys_end) &&
+        in_range_end(end, start, range->phys_end)) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static inline int is_intersecting_memslot(MemSlot *slot, unsigned long vstart, unsigned long vend)
+{
+    return vstart < slot->virt_end && vend > slot->virt_start;
+}
+
+static void qxl_check_memslot_range(PCIQXLDevice *d, unsigned long virt_start,
+                                    unsigned long virt_end)
+{
+    int x;
+    MemSlot *slot;
+
+    for (x = 1; x < NUM_MEMSLOTS; ++x) {
+        slot = &d->state.mem_slots[x];
+
+        if (slot->active) {
+            PANIC_ON(is_intersecting_memslot(slot, virt_start, virt_end));
+        }
+    }
+}
+
+static void qxl_add_memslot(PCIQXLDevice *d, uint32_t slot_id)
+{
+    QXLMemSlot *slot;
+    QXLDevMemSlot qxl_dev_slot;
+    MemSlot *device_slot;
+    uint64_t start;
+    uint64_t end;
+    uint64_t start_offset;
+    uint64_t end_offset; 
+    unsigned long new_virt_start;
+    unsigned long new_virt_end;
+    unsigned long ram_phys_addr;
+    unsigned long ram_start = 0;
+    int i;
+
+    slot = &d->state.ram->mem_slot;
+    start = slot->mem_start;
+    end = slot->mem_end;
+
+    printf("%s: slot %d start: 0x%lx end: 0x%lx\n", __FUNCTION__, slot_id, start, end);
+    
+    PANIC_ON(slot_id >= NUM_MEMSLOTS);
+    PANIC_ON(d->state.mem_slots[slot_id].active);
+    PANIC_ON(slot_id == 0);
+
+    for (i = 0; i < d->state.num_ranges; ++i) {
+        if (address_in_range(start, end, &d->state.address_ranges[i])) {
+            ram_phys_addr = d->state.address_ranges[i].phys_start;
+            ram_start = d->state.address_ranges[i].virt_start;
+            break;
+        }
+    }
+
+    if (!ram_start) {
+        printf("%s: invalid address range\n", __FUNCTION__);
+        exit(-1);
+    }
+
+    start_offset = start - ram_phys_addr;
+    end_offset = end - ram_phys_addr;
+
+    new_virt_start = ram_start + start_offset;
+    new_virt_end = ram_start + end_offset;
+
+    qxl_check_memslot_range(d, new_virt_start, new_virt_end);
+
+    device_slot = &d->state.mem_slots[slot_id];
+    device_slot->active = TRUE;
+    device_slot->address_delta = ram_start + start - ram_phys_addr;
+    device_slot->virt_start = new_virt_start;
+    device_slot->virt_end = new_virt_end;
+
+    qxl_dev_slot.slot_id = slot_id;
+    qxl_dev_slot.addr_delta = device_slot->address_delta;
+    qxl_dev_slot.virt_start = device_slot->virt_start;
+    qxl_dev_slot.virt_end = device_slot->virt_end;
+    qxl_dev_slot.generation = d->state.rom->slot_generation = device_slot->generation++;
+
+    d->worker->add_memslot(d->worker, &qxl_dev_slot);
+}
+
+static void qxl_del_memslot(PCIQXLDevice *d, uint32_t slot_id)
+{
+    MemSlot *device_slot;
+
+    printf("%s: slot %d\n", __FUNCTION__, slot_id);
+
+    PANIC_ON(slot_id >= NUM_MEMSLOTS);
+    PANIC_ON(slot_id == 0);
+    device_slot = &d->state.mem_slots[slot_id];
+    PANIC_ON(!device_slot->active);
+    device_slot->active = FALSE;
+
+    d->worker->del_memslot(d->worker, slot_id);
+}
+
+static inline int is_any_none_host_slot_active(PCIQXLDevice *d)
+{
+    int i;
+
+    for (i = 1; i < NUM_MEMSLOTS; ++i) {
+        if (d->state.mem_slots[i].active) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
 {
     PCIQXLDevice *d = (PCIQXLDevice *)opaque;
@@ -912,7 +1122,9 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
 #ifdef DEBUG_QXL
     printf("%s: addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
 #endif
-    if (d->state.mode != QXL_MODE_NATIVE && io_port != QXL_IO_RESET && io_port != QXL_IO_SET_MODE) {
+    if (d->state.mode != QXL_MODE_NATIVE && io_port != QXL_IO_RESET &&
+        io_port != QXL_IO_SET_MODE && io_port != QXL_IO_MEMSLOT_ADD &&
+        io_port != QXL_IO_MEMSLOT_DEL) {
         printf("%s: unexpected port 0x%x in vga mode\n", __FUNCTION__, io_port);
         return;
     }
@@ -945,11 +1157,17 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
         break;
     case QXL_IO_RESET:
         printf("%u: QXL_IO_RESET\n", d->id);
-        qxl_reset(d);
+        qxl_hard_reset(d);
         break;
     case QXL_IO_SET_MODE:
         printf("%u: QXL_IO_SET_MODE\n", d->id);
         qxl_set_mode(d, val);
+        break;
+    case QXL_IO_MEMSLOT_ADD:
+        qxl_add_memslot(d, val);
+        break;
+    case QXL_IO_MEMSLOT_DEL:
+        qxl_del_memslot(d, val);
         break;
     default:
         printf("%s: unexpected addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
@@ -997,8 +1215,14 @@ static void ram_map(PCIDevice *d, int region_num,
     ASSERT((addr & ~TARGET_PAGE_MASK) == 0);
     ASSERT(size ==  s->ram_size);
     ASSERT((size & ~TARGET_PAGE_MASK) == 0);
+    PANIC_ON(is_any_none_host_slot_active((PCIQXLDevice *)d));
     s->ram_phys_addr = addr;
     cpu_register_physical_memory(addr, size, s->ram_offset | IO_MEM_RAM);
+
+    s->address_ranges[0].virt_start = (unsigned long)s->ram_start;
+    s->address_ranges[0].virt_end = s->address_ranges[0].virt_start + size;
+    s->address_ranges[0].phys_start = addr;
+    s->address_ranges[0].phys_end = s->address_ranges[0].phys_start + size;
 }
 
 static void vram_map(PCIDevice *d, int region_num,
@@ -1085,6 +1309,11 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
     rom->draw_area_size = qxl_max_res_area()* sizeof(uint32_t);
     rom->compression_level = QXL_DEFAULT_COMPRESSION_LEVEL;
     rom->log_level = 0;
+
+    rom->slot_gen_bits = MEMSLOT_GENERATION_BITS;
+    rom->slot_id_bits = MEMSLOT_SLOT_BITS;
+    rom->slots_start = 1;
+    rom->slots_end = NUM_MEMSLOTS - 1;
 
     *max_fb = 0;
     modes->n_modes = sizeof(qxl_modes) / sizeof(QXLMode);
@@ -1445,12 +1674,22 @@ static void init_pipe_signaling(PCIQXLDevice *d)
    fcntl(d->pipe_fd[0], F_SETOWN, getpid());
 }
 
+static void qxl_reset_device_address_ranges(PCIQXLDevice *d)
+{
+    memset(&d->state.address_ranges[0], 0, sizeof(QXLAddressRange));
+}
+
 static void reset_handler(void *opaque)
 {
     PCIQXLDevice *d = (PCIQXLDevice *)opaque;
-    if (!QXL_SHARED_VGA_MODE && d->id > 0) {
-        qxl_reset(d);
-    }
+
+    qxl_hard_reset(d);
+    qxl_reset_device_address_ranges(d);
+}
+
+void qxl_get_init_info(QXLDevRef dev_ref, QXLDevInitInfo *info)
+{
+    _qxl_get_init_info((PCIQXLDevice *)dev_ref, info);
 }
 
 void qxl_get_info(QXLDevRef dev_ref, QXLDevInfo *info)
@@ -1595,6 +1834,11 @@ static void interface_unregister_mode_change(QXLInterface *qxl, VDObjectRef noti
     unregister_mode_notifier(d, (QXLModeNotifier *)notifier);
 }
 
+static void interface_get_init_info(QXLInterface *qxl, QXLDevInitInfo *info)
+{
+    _qxl_get_init_info(((Interface *)qxl)->d, info);
+}
+
 static void interface_get_info(QXLInterface *qxl, QXLDevInfo *info)
 {
     _qxl_get_info(((Interface *)qxl)->d, info);
@@ -1680,6 +1924,7 @@ static void regitser_interface(PCIQXLDevice *d)
     interface->vd_interface.register_mode_change = interface_register_mode_change;
     interface->vd_interface.unregister_mode_change = interface_unregister_mode_change;
 
+    interface->vd_interface.get_init_info = interface_get_init_info;
     interface->vd_interface.get_info = interface_get_info;
     interface->vd_interface.get_command = interface_get_command;
     interface->vd_interface.req_cmd_notification = interface_req_cmd_notification;
@@ -1891,8 +2136,9 @@ static void vdi_port_init(PCIBus *bus, uint8_t *ram, unsigned long ram_offset,
     qemu_add_vm_change_state_handler(vdi_port_vm_change_state_handler, d);
 }
 
-void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset, 
-              uint32_t vram_size, uint32_t in_ram_size)
+void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
+              uint32_t vram_size, uint32_t in_ram_size, QXLAddressRange *address_ranges,
+			  uint8_t num_ranges)
 {
     PCIQXLDevice *d;
     PCIConf *pci_conf;
@@ -1900,9 +2146,10 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     uint32_t max_fb;
     uint32_t qxl_ram_size = msb_mask(in_ram_size*2 - 1);
     uint32_t vdi_port_ram_size = msb_mask(sizeof(VDIPortRam) * 2 - 1);
+    int i;
 
     static int device_id = 0;
-    
+
     if (device_id == 0) {
         vdi_port_init(bus, vram, vram_offset, vdi_port_ram_size);
     }
@@ -1955,6 +2202,14 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     d->state.vram_offset = vram_offset + rom_size + qxl_ram_size;
     d->state.vram_size = msb_mask(vram_size - (qxl_ram_size + rom_size));
 
+    d->state.address_ranges = (QXLAddressRange *)malloc(sizeof(QXLAddressRange) * (num_ranges + 1));
+    PANIC_ON(!d->state.address_ranges);
+    qxl_reset_device_address_ranges(d);
+    for (i = 0; i < num_ranges; ++i) {
+        d->state.address_ranges[i + 1] = address_ranges[i];
+    }
+    d->state.num_ranges = num_ranges + 1;
+
     printf("%s: rom(%p, 0x%x, 0x%x) ram(%p, 0x%x, 0x%x) vram(%p, 0x%lx, 0x%x)\n",
            __FUNCTION__,
            d->state.rom,
@@ -1994,6 +2249,7 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     qxl_vga.clients = d;
     main_thread = pthread_self();
     qxl_reset_state(d);
+    qxl_init_memslots(d);
     init_pipe_signaling(d);
     
 #ifdef CONFIG_SPICE
@@ -2002,6 +2258,7 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     if (!d->worker) {
         creat_native_worker(d, device_id);
     }
+    qxl_create_host_memslot(d);
     if (QXL_SHARED_VGA_MODE || !d->id) {
         qxl_enter_vga_mode(d);
         d->worker->attach(d->worker);

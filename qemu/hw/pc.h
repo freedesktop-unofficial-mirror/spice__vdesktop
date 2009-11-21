@@ -172,9 +172,18 @@ extern int using_qxl;
 extern int num_qxl_device;
 extern uint32_t qxl_ram_size;
 
+typedef struct QXLAddressRange {
+	target_phys_addr_t phys_start;
+	target_phys_addr_t phys_end;
+	unsigned long virt_start;
+	unsigned long virt_end;
+} QXLAddressRange;
+
 void qxl_init(PCIBus *bus, uint8_t *vram,
               unsigned long vram_offset,
-              uint32_t vram_size, uint32_t in_ram_size);
+              uint32_t vram_size, uint32_t in_ram_size,
+			  QXLAddressRange *address_ranges,
+			  uint8_t num_ranges);
 
 void qxl_init_display(DisplayState *ds);
 int qxl_vga_touch(void);
