@@ -41,10 +41,6 @@
 #define TRUE 1
 #define FALSE 0
 
-#define WAIT_CMD_DELAY_MS 10 
-#define WAIT_CMD_MESSAGE_THRESHOLD 2
-#define WAIT_CMD_MESSAGE_INTERVAL_MS 5000
-
 #define QXL_DEV_NAME "qxl"
 #define VDI_PORT_DEV_NAME "vdi_port"
 
@@ -155,6 +151,7 @@ struct PCIQXLDevice {
     QXLState state;
     int id;
     DisplayState ds;
+    Rect dirty_rect;
     struct PCIQXLDevice *dev_next;
     struct PCIQXLDevice *vga_next;
     int pipe_fd[2];
@@ -235,6 +232,7 @@ typedef struct QXLVga {
     PCIQXLDevice *clients;
     int active_clients;
     QEMUTimer *timer;
+    int need_update;
 } QXLVga;
 
 static void qxl_exit_vga_mode(PCIQXLDevice *d);
@@ -691,6 +689,7 @@ static void qxl_enter_vga_mode(PCIQXLDevice *d)
     printf("%u: %s\n", d->id, __FUNCTION__);
     d->state.rom->mode = ~0;
     d->state.mode = QXL_MODE_VGA;
+    memset(&d->dirty_rect, 0, sizeof(d->dirty_rect));
     qxl_notify_mode_change(d);
     qxl_add_vga_client();
 }
@@ -1364,12 +1363,54 @@ inline uint32_t msb_mask(uint32_t val)
     return mask;
 }
 
+static int rect_is_empty(const Rect* r)
+{
+    return r->top == r->bottom || r->left == r->right;
+}
+
+static void rect_union(Rect *dest, const Rect *r)
+{
+    if (rect_is_empty(r)) {
+        return;
+    }
+
+    if (rect_is_empty(dest)) {
+        *dest = *r;
+        return;
+    }
+
+    dest->top = MIN(dest->top, r->top);
+    dest->left = MIN(dest->left, r->left);
+    dest->bottom = MAX(dest->bottom, r->bottom);
+    dest->right = MAX(dest->right, r->right);
+}
+
 static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int h)
 {
     PCIQXLDevice *client;
+    Rect update_area;
 
-    client = qxl_vga.clients;
-    while (client) {
+    qxl_vga.need_update = TRUE;
+
+    update_area.left = x,
+    update_area.right = x + w;
+    update_area.top = y;
+    update_area.bottom = y + h;
+
+    for (client = qxl_vga.clients; client; client = client->vga_next) {
+        if (client->state.mode == QXL_MODE_VGA && client->state.running) {
+            rect_union(&client->dirty_rect, &update_area);
+        }
+    }
+}
+
+static void qxl_vga_update(void)
+{
+    PCIQXLDevice *client;
+
+    qxl_vga.need_update = FALSE;
+
+    for (client = qxl_vga.clients; client; client = client->vga_next) {
         if (client->state.mode == QXL_MODE_VGA && client->state.running) {
             QXLDrawable *drawable;
             QXLImage *image;
@@ -1377,15 +1418,27 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             QXLCommand *cmd;
             int wait;
             int notify;
-            int wait_count;
+            Rect *dirty_rect = &client->dirty_rect;
+
+            if (rect_is_empty(dirty_rect)) {
+                continue;
+            }
+
+            ring = &client->state.vga_ring;
+            RING_PROD_WAIT(ring, wait);
+            if (wait) {
+                qxl_vga.need_update = TRUE;
+                continue;
+            }
 
             drawable = (QXLDrawable *)malloc(sizeof(*drawable) + sizeof(*image));
-            ASSERT(drawable);
+            if (!drawable) {
+                printf("%s: alloc drawable failed\n", __FUNCTION__);
+                abort();
+            }
+
             image = (QXLImage *)(drawable + 1);
-            drawable->bbox.left = x;
-            drawable->bbox.right = x + w;
-            drawable->bbox.top = y;
-            drawable->bbox.bottom = y + h;
+            drawable->bbox = *dirty_rect;
             drawable->clip.type = CLIP_TYPE_NONE;
             drawable->clip.data = 0;
             drawable->effect = QXL_EFFECT_OPAQUE;
@@ -1396,8 +1449,8 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             drawable->u.copy.rop_decriptor =  ROPD_OP_PUT;
             drawable->u.copy.src_bitmap = (PHYSICAL)image;
             drawable->u.copy.src_area.left = drawable->u.copy.src_area.top = 0;
-            drawable->u.copy.src_area.right = w;
-            drawable->u.copy.src_area.bottom = h;
+            drawable->u.copy.src_area.right = dirty_rect->right - dirty_rect->left;
+            drawable->u.copy.src_area.bottom = dirty_rect->bottom - dirty_rect->top;
             drawable->u.copy.scale_mode = 0;
             memset(&drawable->u.copy.mask, 0, sizeof(QMask));
 
@@ -1406,25 +1459,11 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             QXL_SET_IMAGE_ID(image, QXL_IMAGE_GROUP_DEVICE, ++client->state.bits_unique);
             image->bitmap.flags = QXL_BITMAP_DIRECT | QXL_BITMAP_TOP_DOWN | QXL_BITMAP_UNSTABLE;
             image->bitmap.format = BITMAP_FMT_32BIT;
-            image->bitmap.stride = ds->linesize;
-            image->descriptor.width = image->bitmap.x = w;
-            image->descriptor.height = image->bitmap.y = h;
-            image->bitmap.data = (PHYSICAL)(ds->data + y * ds->linesize + x * 4);
+            image->bitmap.stride = qxl_vga.ds->linesize;
+            image->descriptor.width = image->bitmap.x = drawable->u.copy.src_area.right;
+            image->descriptor.height = image->bitmap.y = drawable->u.copy.src_area.bottom;
+            image->bitmap.data = (PHYSICAL)(qxl_vga.ds->data + dirty_rect->top * qxl_vga.ds->linesize + dirty_rect->left * 4);
             image->bitmap.palette = 0;
-
-            ring = &client->state.vga_ring;
-            wait_count = -WAIT_CMD_MESSAGE_THRESHOLD;
-            for (;;) {    
-                RING_PROD_WAIT(ring, wait);
-                if (wait) {
-                    usleep(WAIT_CMD_DELAY_MS * 1000);
-                    if (!(wait_count++ % (WAIT_CMD_MESSAGE_INTERVAL_MS / WAIT_CMD_DELAY_MS))) {
-                        printf("%s: waiting for command\n", __FUNCTION__);
-                    }
-                    continue;
-                }
-                break;
-            }
 
             cmd = RING_PROD_ITEM(ring);
             cmd->type = QXL_CMD_DRAW;
@@ -1433,8 +1472,8 @@ static void qxl_display_update(struct DisplayState *ds, int x, int y, int w, int
             if (notify) {
                 client->worker->wakeup(client->worker);
             }
+            memset(dirty_rect, 0, sizeof(*dirty_rect));
         }
-        client = client->vga_next;
     }
 }
 
@@ -1467,6 +1506,9 @@ static void qxl_display_refresh(struct DisplayState *ds)
 {
     if (qxl_vga.active_clients) {
         vga_hw_update();
+        if (qxl_vga.need_update) {
+            qxl_vga_update();
+        }
     }
 }
 
@@ -2210,7 +2252,7 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     }
     d->state.num_ranges = num_ranges + 1;
 
-    printf("%s: rom(%p, 0x%x, 0x%x) ram(%p, 0x%x, 0x%x) vram(%p, 0x%lx, 0x%x)\n",
+    printf("%s: rom(%p, 0x%lx, 0x%x) ram(%p, 0x%lx, 0x%x) vram(%p, 0x%lx, 0x%x)\n",
            __FUNCTION__,
            d->state.rom,
            d->state.rom_offset,
