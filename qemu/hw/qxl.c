@@ -22,7 +22,7 @@
 #define QXL_VRAM_SIZE 4096
 #define QXL_DEFAULT_COMPRESSION_LEVEL 0
 #define QXL_SHARED_VGA_MODE FALSE
-#define QXL_SAVE_VERSION 3
+#define QXL_SAVE_VERSION 4
 #define VDI_PORT_SAVE_VERSION 1
 
 #define ASSERT(x) if (!(x)) {                               \
@@ -89,6 +89,7 @@ enum {
 typedef struct QXLState {
     uint32_t io_base;
     QXLRom *rom;
+    QXLRom shadow_rom;
     QXLModes *modes;
     uint64_t rom_offset;
     uint32_t rom_size;
@@ -272,6 +273,7 @@ void qxl_do_set_log_level(int log_level)
     PCIQXLDevice *d = dev_list;
     while (d) {
         d->state.rom->log_level = log_level;
+        d->state.shadow_rom.log_level = log_level;
         d = d->dev_next;
     }
 }
@@ -315,7 +317,7 @@ static void qxl_send_events(PCIQXLDevice *d, uint32_t events)
 static void set_dreaw_area(PCIQXLDevice *d, QXLDevInfo *info)
 {
     int stride = info->x_res * sizeof(uint32_t);
-    info->draw_area.buf = (uint8_t *)d->state.ram_start + d->state.rom->draw_area_offset;
+    info->draw_area.buf = (uint8_t *)d->state.ram_start + d->state.shadow_rom.draw_area_offset;
     info->draw_area.size = stride * info->y_res;
     info->draw_area.line_0 = info->draw_area.buf + info->draw_area.size - stride;
     info->draw_area.stride = -stride; 
@@ -328,7 +330,7 @@ static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
     QXLState *state = &d->state;
     QXLMode *mode;
     
-    info->ram_size = state->rom->num_io_pages << TARGET_PAGE_BITS; 
+    info->ram_size = state->shadow_rom.num_io_pages << TARGET_PAGE_BITS; 
 
     if (state->mode == QXL_MODE_VGA) {
         info->x_res = qxl_vga.ds->width;
@@ -343,14 +345,14 @@ static void _qxl_get_info(PCIQXLDevice *d, QXLDevInfo *info)
         return;
     }
 
-    mode = &qxl_modes[d->state.rom->mode];
+    mode = &qxl_modes[d->state.shadow_rom.mode];
 
     info->x_res = mode->x_res;
     info->y_res = mode->y_res;
     info->bits = mode->bits;
     info->use_hardware_cursor = TRUE;
 
-    info->phys_start = (unsigned long)state->ram_start + state->rom->pages_offset;
+    info->phys_start = (unsigned long)state->ram_start + state->shadow_rom.pages_offset;
     info->phys_end = (unsigned long)state->ram_start + state->ram_size;
     info->phys_delta = (long)state->ram_start - state->ram_phys_addr;
     set_dreaw_area(d, info);
@@ -513,6 +515,7 @@ static void _qxl_notify_update(PCIQXLDevice *d, uint32_t update_id)
         return;
     }
     d->state.rom->update_id = update_id;
+    d->state.shadow_rom.update_id = update_id;
     qxl_send_events(d, QXL_INTERRUPT_DISPLAY);
 }
 
@@ -597,6 +600,7 @@ static void qxl_set_mode(PCIQXLDevice *d, uint32_t mode)
     ASSERT(RING_IS_EMPTY(&d->state.vga_ring));
     qxl_reset_state(d);
     qxl_exit_vga_mode(d);
+    d->state.shadow_rom.mode = mode;
     d->state.rom->mode = mode;
     memset(d->state.vram, 0, d->state.vram_size);
     d->state.mode = QXL_MODE_NATIVE;
@@ -623,6 +627,7 @@ static void qxl_enter_vga_mode(PCIQXLDevice *d)
     }
     printf("%u: %s\n", d->id, __FUNCTION__);
     d->state.rom->mode = ~0;
+    d->state.shadow_rom.mode = ~0;
     d->state.mode = QXL_MODE_VGA;
     qxl_notify_mode_change(d);
     qxl_add_vga_client();
@@ -640,7 +645,8 @@ static void qxl_reset_state(PCIQXLDevice *d)
     ram->magic = QXL_RAM_MAGIC;
     ram->int_pending = 0;
     ram->int_mask = 0;
-    rom->update_id = 0;
+    d->state.shadow_rom.update_id = 0;
+    *rom = d->state.shadow_rom;
     RING_INIT(&ram->cmd_ring);
     RING_INIT(&ram->cursor_ring);
     RING_INIT(&d->state.vga_ring);
@@ -1093,6 +1099,7 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
         *max_fb =  MAX(qxl_modes[i].y_res * qxl_modes[i].stride, *max_fb);
         modes->modes[i] = qxl_modes[i];
     }
+    s->shadow_rom = *rom;
     s->rom = rom;
     s->modes = modes;
     return (uint32_t)((uint8_t *)&modes->modes[i] - buf);
@@ -1105,22 +1112,26 @@ static void init_qxl_ram(QXLState *s, uint8_t *buf, uint32_t actual_ram_size)
 
     s->ram_start = buf;
 
-    draw_area_size = s->rom->draw_area_size;
+    draw_area_size = s->shadow_rom.draw_area_size;
     ram_header_size = ALIGN(sizeof(*s->ram), 8);
     ASSERT(ram_header_size + draw_area_size < actual_ram_size);
 
-    s->rom->ram_header_offset = actual_ram_size - ram_header_size;
-    s->ram = (QXLRam *)(buf + s->rom->ram_header_offset);
+    s->shadow_rom.ram_header_offset = actual_ram_size - ram_header_size;
+    s->ram = (QXLRam *)(buf + s->shadow_rom.ram_header_offset);
     s->ram->magic = QXL_RAM_MAGIC;
     RING_INIT(&s->ram->cmd_ring);
     RING_INIT(&s->ram->cursor_ring);
     RING_INIT(&s->ram->release_ring);
     *RING_PROD_ITEM(&s->ram->release_ring) = 0;
 
-    s->rom->draw_area_offset = s->rom->ram_header_offset - draw_area_size;
-    s->rom->pages_offset = 0;
-    s->rom->num_io_pages = (actual_ram_size - (draw_area_size + ram_header_size)) >> TARGET_PAGE_BITS;
-    printf("%s: npages %u\n", __FUNCTION__, s->rom->num_io_pages);
+    s->shadow_rom.draw_area_offset = s->shadow_rom.ram_header_offset - draw_area_size;
+    s->shadow_rom.pages_offset = 0;
+    s->shadow_rom.num_io_pages =
+                        (actual_ram_size -(draw_area_size + ram_header_size)) >> TARGET_PAGE_BITS;
+
+    *s->rom = s->shadow_rom;
+
+    printf("%s: npages %u\n", __FUNCTION__, s->shadow_rom.num_io_pages);
 }
 
 inline uint32_t msb_mask(uint32_t val)
@@ -1301,6 +1312,7 @@ static void qxl_save(QEMUFile* f, void* opaque)
     pci_device_save(&d->pci_dev, f);
 
     qemu_put_be32(f, s->rom->mode);
+    qemu_put_be32(f, s->shadow_rom.mode);
     qemu_put_be32(f, s->num_free_res);
 
     if (s->last_release == NULL)
@@ -1329,8 +1341,9 @@ static int qxl_load(QEMUFile* f,void* opaque,int version_id)
     uint32_t      last_release_offset;
     int           ret;
 
-    if (version_id != QXL_SAVE_VERSION)
+    if (version_id < 3 || version_id > QXL_SAVE_VERSION) {
         return -EINVAL;
+    }
 
     ret = pci_device_load(&d->pci_dev, f);
     if (ret) {
@@ -1346,7 +1359,12 @@ static int qxl_load(QEMUFile* f,void* opaque,int version_id)
         qxl_remove_vga_client();
     }
 
-    s->rom->mode    = qemu_get_be32(f);
+    s->rom->mode = qemu_get_be32(f);
+    if (version_id == 3) {
+        s->shadow_rom.mode = s->rom->mode;
+    } else {
+        s->shadow_rom.mode = qemu_get_be32(f);
+    }
     s->num_free_res = qemu_get_be32(f);
 
     last_release_offset = qemu_get_be32(f);
@@ -1373,10 +1391,6 @@ static int qxl_load(QEMUFile* f,void* opaque,int version_id)
             exit(-1);
         }
         qemu_get_buffer(f, s->worker_data, s->worker_data_size);
-    }
-
-    if (version_id == 2) {
-        qemu_get_byte(f);
     }
 
     if (s->mode == QXL_MODE_VGA) {
@@ -1533,12 +1547,14 @@ static void interface_attache_worker(QXLInterface *qxl, QXLWorker *qxl_worker)
 static void interface_set_compression_level(QXLInterface *qxl, int level)
 {
     PCIQXLDevice *d = ((Interface *)qxl)->d;
+    d->state.shadow_rom.compression_level = level;
     d->state.rom->compression_level = level;
 }
 
 static void interface_set_mm_time(QXLInterface *qxl, uint32_t mm_time)
 {
     PCIQXLDevice *d = ((Interface *)qxl)->d;
+    d->state.shadow_rom.mm_clock = mm_time;
     d->state.rom->mm_clock = mm_time;
 }
 
