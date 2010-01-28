@@ -72,10 +72,19 @@ typedef struct ATTR_PACKED name {                       \
 
 #define RING_PROD_ITEM(r) (&(r)->items[(r)->prod & RING_INDEX_MASK(r)].el)
 
+#define RING_PROD_ITEM_SAFE(r, start, end, ret) {                                                  \
+    UINT32 prod = (r)->prod & RING_INDEX_MASK(r);                                                  \
+    typeof(&(r)->items[prod]) m_item = &(r)->items[prod];                                          \
+    if (!((uint8_t*)m_item >= (uint8_t*)(start) && (uint8_t*)(m_item + 1) <= (uint8_t*)(end))) {   \
+        abort();                                                                                   \
+    }                                                                                              \
+    ret = &m_item->el;                                                                             \
+}
+
 #define RING_PROD_WAIT(r, wait)                 \
     if (((wait) = RING_IS_FULL(r))) {           \
         (r)->notify_on_cons = (r)->cons + 1;    \
-        mb();	                                \
+        mb();                                   \
         (wait) = RING_IS_FULL(r);               \
     }
 
@@ -86,6 +95,15 @@ typedef struct ATTR_PACKED name {                       \
 
 
 #define RING_CONS_ITEM(r) (&(r)->items[(r)->cons & RING_INDEX_MASK(r)].el)
+
+#define RING_CONS_ITEM_SAFE(r, start, end, ret) {                                                 \
+    UINT32 cons = (r)->cons & RING_INDEX_MASK(r);                                                 \
+    typeof(&(r)->items[cons]) m_item = &(r)->items[cons];                                         \
+    if (!((uint8_t*)m_item >= (uint8_t*)(start) && (uint8_t*)(m_item + 1) <= (uint8_t*)(end))) {  \
+        abort();                                                                                  \
+    }                                                                                             \
+    ret = &m_item->el;                                                                            \
+}
 
 #define RING_CONS_WAIT(r, wait)                 \
     if (((wait) = RING_IS_EMPTY(r))) {          \
