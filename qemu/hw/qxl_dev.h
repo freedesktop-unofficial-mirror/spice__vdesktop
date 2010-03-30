@@ -50,6 +50,8 @@ enum {
     QXL_IO_CREATE_PRIMARY,
     QXL_IO_DESTROY_PRIMARY,
     QXL_IO_DESTROY_SURFACE_WAIT,
+    QXL_IO_DESTROY_ALL_SURFACES,
+    QXL_IO_NOTIFY_SURFACES_OOM,
 
     QXL_IO_RANGE_SIZE
 };
@@ -71,6 +73,7 @@ typedef struct ATTR_PACKED QXLRom {
     UINT8 slot_gen_bits;
     UINT8 slot_id_bits;
     UINT8 slot_generation;
+    UINT32 n_surfaces;
 } QXLRom;
 
 typedef struct ATTR_PACKED QXLMode {
@@ -149,6 +152,7 @@ typedef struct ATTR_PACKED QXLRam {
     QXLCursorRing cursor_ring;
     QXLReleaseRing release_ring;
     Rect update_area;
+    UINT32 update_surface;
     QXLMemSlot mem_slot;
     QXLSurfaceCreate create_surface;
     UINT64 flags;
@@ -180,6 +184,7 @@ typedef struct ATTR_PACKED QXLUpdateCmd {
     QXLReleaseInfo release_info;
     Rect area;
     UINT32 update_id;
+    UINT32 surface_id;
 } QXLUpdateCmd;
 
 typedef struct ATTR_PACKED QXLCursor {
@@ -254,6 +259,7 @@ typedef struct ATTR_PACKED QXLCopyBits {
 
 typedef struct ATTR_PACKED QXLDrawable {
     QXLReleaseInfo release_info;
+    uint32_t surface_id;
     UINT8 effect;
     UINT8 type;
     UINT8 self_bitmap;
@@ -261,6 +267,8 @@ typedef struct ATTR_PACKED QXLDrawable {
     Rect bbox;
     Clip clip;
     UINT32 mm_time;
+    INT32 surfaces_dest[3];
+    Rect surfaces_rects[3];
     union {
         Fill fill;
         Opaque opaque;

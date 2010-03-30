@@ -19,7 +19,7 @@
 
 //#define QXL_IO_MEM
 
-#define QXL_VRAM_SIZE 4096
+#define QXL_VRAM_SIZE 1024 * 1024 * 128
 #define QXL_DEFAULT_COMPRESSION_LEVEL 0
 #define QXL_SHARED_VGA_MODE FALSE
 #define QXL_SAVE_VERSION 3
@@ -345,6 +345,7 @@ static void _qxl_get_init_info(PCIQXLDevice *d, QXLDevInitInfo *info)
     info->num_memslots_groups = NUM_MEMSLOTS_GROUPS;
     info->internal_groupslot_id = 0;
     info->qxl_ram_size = d->state.rom->num_pages << TARGET_PAGE_BITS;
+    info->n_surfaces = 10000;
 }
 
 static int qxl_get_ring_command(PCIQXLDevice *d, QXLCommandExt *cmd_ext, QXLCommandRing *ring,
@@ -413,9 +414,10 @@ static int _qxl_get_cursor_command(PCIQXLDevice *d, QXLCommandExt *cmd_ext)
     return 1;
 }
 
-static const Rect *_qxl_get_update_area(PCIQXLDevice *d)
+static void _qxl_get_update_area(PCIQXLDevice *d, const Rect **rect, UINT32 **surface_id)
 {
-    return &d->state.ram->update_area;
+    *rect = &d->state.ram->update_area;
+    *surface_id = &d->state.ram->update_surface;
 }
 
 static int _qxl_req_cmd_notification(PCIQXLDevice *d)
@@ -1197,6 +1199,9 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
     case QXL_IO_DESTROY_SURFACE_WAIT:
         d->worker->destroy_surface_wait(d->worker, val);
         break;
+    case QXL_IO_DESTROY_ALL_SURFACES:
+        d->worker->destroy_surfaces(d->worker);
+        break;
     default:
         printf("%s: unexpected addr 0x%x val 0x%x\n", __FUNCTION__, addr, val);
     }
@@ -1269,6 +1274,10 @@ static void vram_map(PCIDevice *d, int region_num,
 #else
     cpu_register_physical_memory(addr, size, s->vram_offset | IO_MEM_RAM);
 #endif
+    s->address_ranges[1].virt_start = (unsigned long)s->vram;
+    s->address_ranges[1].virt_end = s->address_ranges[1].virt_start + size;
+    s->address_ranges[1].phys_start = addr;
+    s->address_ranges[1].phys_end = s->address_ranges[1].phys_start + size;
 }
 
 
@@ -1341,6 +1350,8 @@ static uint32_t init_qxl_rom(PCIQXLDevice *d, uint8_t *buf, uint32_t vram_size,
     rom->slot_id_bits = MEMSLOT_SLOT_BITS;
     rom->slots_start = 1;
     rom->slots_end = NUM_MEMSLOTS - 1;
+
+    rom->n_surfaces = 10000;
 
     *max_fb = 0;
     modes->n_modes = sizeof(qxl_modes) / sizeof(QXLMode);
@@ -1468,6 +1479,10 @@ static void qxl_vga_update(void)
             }
 
             image = (QXLImage *)(drawable + 1);
+            drawable->surface_id = 0;
+            drawable->surfaces_dest[0] = -1;
+            drawable->surfaces_dest[1] = -1;
+            drawable->surfaces_dest[2] = -1;
             drawable->bbox = *dirty_rect;
             drawable->clip.type = CLIP_TYPE_NONE;
             drawable->clip.data = 0;
@@ -1795,9 +1810,9 @@ int qxl_has_command(QXLDevRef dev_ref)
     return _qxl_has_command((PCIQXLDevice *)dev_ref);
 }
 
-const Rect *qxl_get_update_area(QXLDevRef dev_ref)
+void qxl_get_update_area(QXLDevRef dev_ref, const Rect **rect, UINT32 **surface_id)
 {
-    return _qxl_get_update_area((PCIQXLDevice *)dev_ref);
+    _qxl_get_update_area((PCIQXLDevice *)dev_ref, rect, surface_id);
 }
 
 int qxl_flush_resources(QXLDevRef dev_ref)
@@ -1879,9 +1894,9 @@ static int interface_req_cursor_notification(QXLInterface *qxl)
     return _qxl_req_cursor_notification(((Interface *)qxl)->d);
 }
 
-static const struct Rect *interface_get_update_area(QXLInterface *qxl)
+static void interface_get_update_area(QXLInterface *qxl, const Rect **rect, UINT32 **surface_id)
 {
-    return _qxl_get_update_area(((Interface *)qxl)->d);
+    _qxl_get_update_area(((Interface *)qxl)->d, rect, surface_id);
 }
 
 static void interface_notify_update(QXLInterface *qxl, uint32_t update_id)
@@ -2204,13 +2219,13 @@ void qxl_init(PCIBus *bus, uint8_t *vram, unsigned long vram_offset,
     d->state.vram_offset = vram_offset + rom_size + qxl_ram_size;
     d->state.vram_size = msb_mask(vram_size - (qxl_ram_size + rom_size));
 
-    d->state.address_ranges = (QXLAddressRange *)malloc(sizeof(QXLAddressRange) * (num_ranges + 1));
+    d->state.address_ranges = (QXLAddressRange *)malloc(sizeof(QXLAddressRange) * (num_ranges + 2));
     PANIC_ON(!d->state.address_ranges);
     qxl_reset_device_address_ranges(d);
     for (i = 0; i < num_ranges; ++i) {
-        d->state.address_ranges[i + 1] = address_ranges[i];
+        d->state.address_ranges[i + 2] = address_ranges[i];
     }
-    d->state.num_ranges = num_ranges + 1;
+    d->state.num_ranges = num_ranges + 2;
 
     d->state.group_ids_flip[0] = 0;
     d->state.group_ids_flip[1] = 1;

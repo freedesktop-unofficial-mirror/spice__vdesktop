@@ -95,7 +95,7 @@ int qxl_req_cmd_notification(QXLDevRef dev_ref);
 int qxl_get_cursor_command(QXLDevRef dev_ref, QXLCommandExt *cmd);
 int qxl_req_cursor_notification(QXLDevRef dev_ref);
 int qxl_has_command(QXLDevRef dev_ref);
-const Rect *qxl_get_update_area(QXLDevRef dev_ref);
+void qxl_get_update_area(QXLDevRef dev_ref, const Rect **rect, uint32_t **surface_id);
 int qxl_flush_resources(QXLDevRef dev_ref);
 void qxl_set_save_data(QXLDevRef dev_ref, void *data, int size);
 void *qxl_get_save_data(QXLDevRef dev_ref);
