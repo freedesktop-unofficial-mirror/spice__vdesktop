@@ -39,6 +39,7 @@ typedef struct QXLDevInitInfo {
     uint8_t memslot_id_bits;
     uint32_t qxl_ram_size;
     uint8_t internal_groupslot_id;
+    uint32_t n_surfaces;
 } QXLDevInitInfo;
 
 typedef struct QXLDevMemSlot {
