@@ -1220,15 +1220,15 @@ fi
 ##########################################
 # spice probe
 if test "$spice" = "yes" ; then
-  `pkg-config --atleast-version=0.5.2 spice` || spice="no"
+  `pkg-config --atleast-version=0.5.2 spice-server` || spice="no"
 fi
 if test "$spice" = "yes" ; then
   cat > $TMPC << EOF
 #include <spice.h>
 int main(void) { CoreInterface ci; spice_init(&ci); return 0; }
 EOF
-  spice_cflags=`pkg-config --cflags spice`
-  spice_libs=`pkg-config --libs spice`
+  spice_cflags=`pkg-config --cflags spice-server`
+  spice_libs=`pkg-config --libs spice-server`
   if $cc $ARCH_CFLAGS -o $TMPE ${OS_CFLAGS} $spice_cflags $TMPC \
       $spice_libs > /dev/null 2> /dev/null ; then
     :
