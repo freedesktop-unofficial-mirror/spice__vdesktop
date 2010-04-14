@@ -72,7 +72,9 @@ struct QXLWorker {
     void (*load)(QXLWorker *worker);
     void (*start)(QXLWorker *worker);
     void (*stop)(QXLWorker *worker);
-    void (*update_area)(QXLWorker *worker);
+    void (*update_area)(QXLWorker *qxl_worker, uint32_t surface_id,
+                        Rect *area, Rect *dirty_rects,
+                        uint32_t num_dirty_rects, uint32_t clear_dirty_region);
     void (*add_memslot)(QXLWorker *worker, QXLDevMemSlot *slot);
     void (*del_memslot)(QXLWorker *worker, uint32_t slot_group_id, uint32_t slot_id);
     void (*reset_memslots)(QXLWorker *worker);
@@ -96,7 +98,6 @@ int qxl_req_cmd_notification(QXLDevRef dev_ref);
 int qxl_get_cursor_command(QXLDevRef dev_ref, QXLCommandExt *cmd);
 int qxl_req_cursor_notification(QXLDevRef dev_ref);
 int qxl_has_command(QXLDevRef dev_ref);
-void qxl_get_update_area(QXLDevRef dev_ref, const Rect **rect, uint32_t **surface_id);
 int qxl_flush_resources(QXLDevRef dev_ref);
 void qxl_set_save_data(QXLDevRef dev_ref, void *data, int size);
 void *qxl_get_save_data(QXLDevRef dev_ref);

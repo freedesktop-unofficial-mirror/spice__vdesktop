@@ -414,12 +414,6 @@ static int _qxl_get_cursor_command(PCIQXLDevice *d, QXLCommandExt *cmd_ext)
     return 1;
 }
 
-static void _qxl_get_update_area(PCIQXLDevice *d, const Rect **rect, UINT32 **surface_id)
-{
-    *rect = &d->state.ram->update_area;
-    *surface_id = &d->state.ram->update_surface;
-}
-
 static int _qxl_req_cmd_notification(PCIQXLDevice *d)
 {
     int wait;
@@ -1153,7 +1147,8 @@ static void ioport_write(void *opaque, uint32_t addr, uint32_t val)
     }
     switch (io_port) {
     case QXL_IO_UPDATE_AREA:
-        d->worker->update_area(d->worker);
+        d->worker->update_area(d->worker, d->state.ram->update_surface, &d->state.ram->update_area,
+                               NULL, 0, 0);
         break;
     case QXL_IO_NOTIFY_CMD:
         d->worker->wakeup(d->worker);
@@ -1810,11 +1805,6 @@ int qxl_has_command(QXLDevRef dev_ref)
     return _qxl_has_command((PCIQXLDevice *)dev_ref);
 }
 
-void qxl_get_update_area(QXLDevRef dev_ref, const Rect **rect, UINT32 **surface_id)
-{
-    _qxl_get_update_area((PCIQXLDevice *)dev_ref, rect, surface_id);
-}
-
 int qxl_flush_resources(QXLDevRef dev_ref)
 {
     return _qxl_flush_resources((PCIQXLDevice *)dev_ref);
@@ -1894,11 +1884,6 @@ static int interface_req_cursor_notification(QXLInterface *qxl)
     return _qxl_req_cursor_notification(((Interface *)qxl)->d);
 }
 
-static void interface_get_update_area(QXLInterface *qxl, const Rect **rect, UINT32 **surface_id)
-{
-    _qxl_get_update_area(((Interface *)qxl)->d, rect, surface_id);
-}
-
 static void interface_notify_update(QXLInterface *qxl, uint32_t update_id)
 {
     _qxl_notify_update(((Interface *)qxl)->d, update_id);
@@ -1949,7 +1934,6 @@ static void regitser_interface(PCIQXLDevice *d)
     interface->vd_interface.release_resource = interface_release_resource;
     interface->vd_interface.get_cursor_command = interface_get_cursor_command;
     interface->vd_interface.req_cursor_notification = interface_req_cursor_notification;
-    interface->vd_interface.get_update_area = interface_get_update_area;
     interface->vd_interface.notify_update = interface_notify_update;
     interface->vd_interface.set_save_data = interface_set_save_data;
     interface->vd_interface.get_save_data = interface_get_save_data;

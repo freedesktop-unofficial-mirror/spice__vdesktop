@@ -227,7 +227,9 @@ static void native_qxl_worker_detach(QXLWorker *worker)
     native_qxl_worker_wakeup(worker);
 }
 
-static void native_qxl_worker_update_area(QXLWorker *worker)
+static void native_qxl_worker_update_area(QXLWorker *worker, uint32_t surface_id,
+                                          Rect *area, Rect *dirty_rects,
+                                          uint32_t num_dirty_rects, uint32_t clear_dirty_region)
 {
     qxl_printf("");
     native_qxl_worker_wakeup(worker);
