@@ -125,7 +125,7 @@ typedef struct ATTR_PACKED QXLSurfaceCreate {
     UINT32 width;
     UINT32 height;
     INT32 stride;
-    UINT32 depth;
+    UINT32 format;
     UINT32 position;
     UINT32 mouse_mode;
     UINT32 flags;

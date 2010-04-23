@@ -621,7 +621,7 @@ static void qxl_create_primary_surface(PCIQXLDevice *d)
 
     printf("%s\n", __FUNCTION__);
 
-    surface.depth = 32;
+    surface.format = 32 /* == SPICE_SURFACE_FMT_32_xRGB */;
     surface.width = qxl_vga.ds->width;
     surface.height = qxl_vga.ds->height;
     surface.stride = -qxl_vga.ds->width * 4;
@@ -674,7 +674,7 @@ static void qxl_create_primary(PCIQXLDevice *d)
     qxl_exit_vga_mode(d);
     d->state.mode = QXL_MODE_NATIVE;
 
-    surface.depth = d->state.ram->create_surface.depth;
+    surface.format = d->state.ram->create_surface.format;
     surface.height = d->state.ram->create_surface.height;
     surface.mem = d->state.ram->create_surface.mem;
     surface.mouse_mode = TRUE;

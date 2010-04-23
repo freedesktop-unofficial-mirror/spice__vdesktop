@@ -270,6 +270,7 @@ typedef struct ATTR_PACKED Transparent {
 } Transparent;
 
 typedef struct ATTR_PACKED AlphaBlnd {
+    UINT16 alpha_flags;
     UINT8 alpha;
     ADDRESS src_bitmap;
     Rect src_area;
