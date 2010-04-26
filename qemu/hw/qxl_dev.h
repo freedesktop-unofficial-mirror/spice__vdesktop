@@ -42,6 +42,7 @@ enum {
     QXL_IO_UPDATE_IRQ,
     QXL_IO_NOTIFY_OOM,
     QXL_IO_RESET,
+    QXL_IO_SET_MODE,                  /* qxl-1 */
     QXL_IO_LOG,
     QXL_IO_MEMSLOT_ADD,
     QXL_IO_MEMSLOT_DEL,
@@ -62,18 +63,22 @@ typedef struct ATTR_PACKED QXLRom {
     UINT32 update_id;
     UINT32 compression_level;
     UINT32 log_level;
+    uint32_t mode;                    /* qxl-1 */
     UINT32 modes_offset;
     UINT32 num_pages;
-    UINT32 surface0_area_size;
+    uint32_t pages_offset;            /* qxl-1 */
+    uint32_t draw_area_offset;        /* qxl-1 */
+    uint32_t surface0_area_size;      /* qxl-1 name: draw_area_size */
     UINT32 ram_header_offset;
     UINT32 mm_clock;
+    UINT32 n_surfaces;
     UINT64 flags;
     UINT8 slots_start;
     UINT8 slots_end;
     UINT8 slot_gen_bits;
     UINT8 slot_id_bits;
     UINT8 slot_generation;
-    UINT32 n_surfaces;
+    UINT8 padding[3];
 } QXLRom;
 
 typedef struct ATTR_PACKED QXLMode {
@@ -112,6 +117,7 @@ typedef struct ATTR_PACKED QXLCommand {
 typedef struct ATTR_PACKED QXLCommandExt {
     QXLCommand cmd;
     uint32_t group_id;
+    uint32_t flags;
 } QXLCommandExt;
 
 typedef struct ATTR_PACKED QXLMemSlot {
